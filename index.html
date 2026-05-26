@@ -399,10 +399,12 @@
 </head>
 <body>
 
+<!-- ===== TICKER BAR ===== -->
 <div class="ticker-bar">
-  <div class="ticker-inner" id="tickerContent">Cargando datos del mercado...</div>
+  <div class="ticker-inner" id="tickerContent"></div>
 </div>
 
+<!-- ===== HEADER ===== -->
 <header class="site-header">
   <div style="max-width:1400px; margin:0 auto; padding:0 24px; display:flex; align-items:center; justify-content:space-between; height:52px;">
     <div style="display:flex; align-items:center; gap:16px;">
@@ -426,18 +428,21 @@
   </div>
 </header>
 
+<!-- ===== MAIN ===== -->
 <main style="max-width:1400px; margin:0 auto; padding:24px;">
 
+  <!-- =================== SECCIÓN TABLERO =================== -->
   <section id="s-tablero" class="fade-in">
 
+    <!-- ITM Row -->
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
       <div>
         <div style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted); margin-bottom:6px; letter-spacing:0.08em;">ITM — ÍNDICE DE TENSIÓN MACRO</div>
         <div style="display:flex; align-items:center; gap:12px;">
-          <div style="font-family:var(--font-mono); font-size:32px; font-weight:600; color:var(--text-muted);" id="itmValue">--</div>
+          <div style="font-family:var(--font-mono); font-size:32px; font-weight:600; color:var(--red);" id="itmValue">72.4</div>
           <div>
-            <div id="itmBadge" class="itm-badge">Cargando...</div>
-            <div style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); margin-top:4px;"></div>
+            <div id="itmBadge" class="itm-badge itm-alert">⬤ TENSIÓN ALTA</div>
+            <div style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); margin-top:4px;">Δ +3.2 vs ayer</div>
           </div>
         </div>
       </div>
@@ -448,9 +453,11 @@
       </div>
     </div>
 
+    <!-- KPI Grid -->
     <div class="section-label">Variables del día</div>
     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px; margin-bottom:24px;" id="kpiGrid"></div>
 
+    <!-- Bottom row: mini chart + breaches table -->
     <div style="display:grid; grid-template-columns:1fr 340px; gap:16px;">
       <div class="panel">
         <div class="panel-header">
@@ -471,9 +478,11 @@
     </div>
   </section>
 
+  <!-- =================== SECCIÓN GRÁFICOS =================== -->
   <section id="s-graficos" style="display:none;" class="fade-in">
     <div class="section-label">Gráficos históricos</div>
 
+    <!-- Controls -->
     <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:20px; align-items:center;">
       <div>
         <div style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:4px; letter-spacing:0.1em;">EJE PRIMARIO</div>
@@ -536,6 +545,7 @@
     </div>
   </section>
 
+  <!-- =================== SECCIÓN NOTICIAS =================== -->
   <section id="s-noticias" style="display:none;" class="fade-in">
     <div class="section-label">Feed de noticias económicas</div>
 
@@ -566,6 +576,7 @@
     </div>
   </section>
 
+  <!-- =================== SECCIÓN CRUCES =================== -->
   <section id="s-cruces" style="display:none;" class="fade-in">
     <div class="section-label">Análisis comparativo — Base 100</div>
 
@@ -589,178 +600,239 @@
       <div style="padding:8px;"><div id="base100Chart"></div></div>
     </div>
 
+    <!-- Cruces predefinidos -->
     <div class="section-label">Cruces predefinidos</div>
     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px;" id="crucesGrid"></div>
   </section>
 
 </main>
 
+<!-- Footer -->
 <footer style="border-top:1px solid var(--border); margin-top:48px; padding:20px 24px; text-align:center;">
   <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-muted); letter-spacing:0.08em;">
     PULSO MACRO · Datos con fines informativos · Fuentes: BCRA, Ambito, Reuters, Stooq
   </div>
 </footer>
 
+<!-- ===== SCRIPTS ===== -->
 <script>
 // ====================================================
-//  INTEGRACIÓN API APPS SCRIPT (BACKEND)
+//  CONFIG API
 // ====================================================
-const API_URL = "https://script.google.com/macros/s/AKfycbxzqaL2-fTCCoYwexjdTkGFK7E1qFdxVQd17Eqw-_9_NSgkASCwOFfHxo6OZbGY5-LDjA/exec";
 
-let HISTORICO = [];
-let NEWS_HIST = [];
-let N = 0;
+const API_BASE = "https://script.google.com/macros/s/AKfycbxRBNUvxU-NWUAFGahAfZ5UrXc9_9pxSUC6DIxbQcJYy5Eu1wKLeCBMLtpULR4BUJnXvQ/exec";
+
+// Estado global — se llena con datos reales de la API
+let TABLERO    = null;  // objeto fila más reciente de HISTORICO
+let HISTORICO  = [];    // array normalizado para gráficos (de SERIES_HIST)
+let NEWS_HIST  = [];    // array de noticias
+let API_READY  = false;
+
+const TODAY = new Date();
+const fmt = d => d.toISOString().split('T')[0];
 const AMBITOS = ['Nacional','Internacional','CABA','Regional'];
 
-// Mapeo estricto: De nombres de Apps Script a variables del Frontend
-const VAR_MAP = {
-  "Dólar oficial": "dolar_oficial",
-  "Dólar blue": "dolar_blue",
-  "Dólar MEP": "dolar_mep",
-  "Dólar CCL": "dolar_ccl",
-  "Brecha": "brecha",
-  "Reservas": "reservas",
-  "Riesgo país": "riesgo_pais",
-  "Merval": "merval",
-  "Acción YPFD": "ypfd",
-  "Soja (ZS)": "soja",
-  "S&P 500 (SPX)": "sp500",
-  "Maíz (ZC)": "maiz",
-  "Trigo (ZW)": "trigo"
+// ====================================================
+//  MAPEO DE COLUMNAS REALES → CLAVES INTERNAS
+//  Sheets usa: oficial, blue, mep, ccl, brecha_pct,
+//              reservas_usd_m, riesgo_pais, itm_score, itm_estado
+//  Internamente usamos: dolar_oficial, dolar_blue, etc.
+// ====================================================
+
+function mapTablero(raw) {
+  return {
+    fecha:        raw.fecha         || '',
+    hora:         raw.hora          || '',
+    dolar_oficial: toN(raw.oficial),
+    dolar_blue:    toN(raw.blue),
+    dolar_mep:     toN(raw.mep),
+    dolar_ccl:     toN(raw.ccl),
+    brecha:        toN(raw.brecha_pct),
+    reservas:      toN(raw.reservas_usd_m),
+    riesgo_pais:   toN(raw.riesgo_pais),
+    itm_score:     toN(raw.itm_score),
+    itm_estado:    raw.itm_estado   || '',
+    estado:        raw.estado       || '',
+    subtitulo:     raw.subtitulo    || '',
+    // deltas
+    d_oficial:    toN(raw.d_oficial_pct),
+    d_blue:       toN(raw.d_blue_pct),
+    d_mep:        toN(raw.d_mep_pct),
+    d_ccl:        toN(raw.d_ccl_pct),
+    d_brecha:     toN(raw.d_brecha_pp),
+    d_reservas:   toN(raw.d_reservas_pct),
+    d_riesgo:     toN(raw.d_riesgo_pts),
+  };
+}
+
+// SERIES_HIST real: { fecha, variable, valor, valor_base100, variacion_pct, grupo }
+// variable usa nombres como "Dólar MEP", "Dólar CCL", etc. — normalizamos a claves internas
+const VAR_NAME_MAP = {
+  'Dólar oficial':  'dolar_oficial',
+  'Dólar Oficial':  'dolar_oficial',
+  'Dólar blue':     'dolar_blue',
+  'Dólar Blue':     'dolar_blue',
+  'Dólar MEP':      'dolar_mep',
+  'Dólar CCL':      'dolar_ccl',
+  'Brecha':         'brecha',
+  'Reservas':       'reservas',
+  'Riesgo país':    'riesgo_pais',
+  'Riesgo País':    'riesgo_pais',
+  'Merval':         'merval',
+  'YPFD':           'ypfd',
+  'Soja':           'soja',
+  'Maíz':           'maiz',
+  'Trigo':          'trigo',
+  'S&P 500':        'sp500',
+  'Base monetaria': 'base_monetaria',
+  'Tasa BCRA':      'tasa_bcra',
 };
 
-// Utilidad para normalizar dd/mm/yyyy a yyyy-mm-dd para orden cronológico
-function parseDate(s) {
-  if (!s) return "";
-  if (s.includes('T')) return s.split('T')[0];
-  if (s.includes('/')) {
-    let p = s.split('/');
-    return `${p[2]}-${p[1]}-${p[0]}`;
-  }
-  return s;
+function normalizeSeries(rawRows) {
+  // rawRows es el array de SERIES_HIST
+  // Agrupamos por fecha → objeto con todas las variables como propiedades
+  const byDate = {};
+  rawRows.forEach(r => {
+    const clave = VAR_NAME_MAP[r.variable] || r.variable;
+    const fecha = normalizeFecha(r.fecha);
+    if (!fecha) return;
+    if (!byDate[fecha]) byDate[fecha] = { fecha };
+    byDate[fecha][clave]          = toN(r.valor);
+    byDate[fecha][clave+'_b100']  = toN(r.valor_base100);
+    byDate[fecha][clave+'_vpct']  = toN(r.variacion_pct);
+  });
+  return Object.values(byDate).sort((a,b) => a.fecha.localeCompare(b.fecha));
 }
 
-async function loadRealData() {
+function mapNoticias(rawRows) {
+  return rawRows.map(r => ({
+    fecha:   normalizeFecha(r.fecha) || r.fecha || '',
+    ambito:  inferirAmbito(r.ambito, r.source),
+    titular: r.title || r.titular || '',
+    url:     r.link  || r.url    || '#',
+    source:  r.source || '',
+  }));
+}
+
+function inferirAmbito(ambito, source) {
+  if (ambito && AMBITOS.includes(ambito)) return ambito;
+  // fallback por fuente
+  const s = (source || '').toLowerCase();
+  if (s.includes('caba') || s.includes('porteño')) return 'CABA';
+  if (s.includes('infobae') || s.includes('nación') || s.includes('clarin') || s.includes('economista') || s.includes('ámbito') || s.includes('ambito')) return 'Nacional';
+  return 'Nacional';
+}
+
+function normalizeFecha(v) {
+  if (!v) return '';
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0,10);
+  // dd/MM/yyyy
+  const m = String(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  // Date object
+  if (v instanceof Date && !isNaN(v)) return fmt(v);
+  // Google Sheets serial
+  if (typeof v === 'number' && v > 40000) {
+    const d = new Date((v - 25569) * 86400000);
+    return fmt(d);
+  }
+  return String(v).slice(0,10);
+}
+
+function toN(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') return v;
+  const s = String(v).replace(/[^0-9.,-]/g,'').replace(',','.');
+  const n = parseFloat(s);
+  return isFinite(n) ? n : null;
+}
+
+// ====================================================
+//  CARGA DE DATOS DESDE LA API
+// ====================================================
+
+async function fetchAll() {
+  showLoadingState(true);
   try {
-    // 1. Peticiones concurrentes para maximizar velocidad
     const [resTablero, resGraficos, resNoticias] = await Promise.all([
-      fetch(API_URL + "?action=tablero").then(r => r.json()),
-      fetch(API_URL + "?action=graficos").then(r => r.json()),
-      fetch(API_URL + "?action=noticias").then(r => r.json())
+      fetch(`${API_BASE}?action=tablero`).then(r => r.json()),
+      fetch(`${API_BASE}?action=graficos`).then(r => r.json()),
+      fetch(`${API_BASE}?action=noticias`).then(r => r.json()),
     ]);
 
-    // 2. Procesar Noticias
-    NEWS_HIST = resNoticias.map(n => ({
-      fecha: parseDate(n.fecha),
-      ambito: n.ambito || 'Nacional',
-      titular: n.title,
-      url: n.link || '#'
-    }));
+    if (resTablero.error) throw new Error('Tablero: ' + resTablero.error);
 
-    // 3. Procesar Gráficos (Pivotear filas a columnas por fecha)
-    const grouped = {};
-    resGraficos.forEach(row => {
-      const d = parseDate(row.fecha);
-      if (!d) return;
-      if (!grouped[d]) grouped[d] = { fecha: d };
-      
-      const mappedKey = VAR_MAP[row.variable];
-      if (mappedKey) grouped[d][mappedKey] = parseFloat(row.valor) || 0;
-    });
+    TABLERO   = mapTablero(resTablero);
+    HISTORICO = normalizeSeries(Array.isArray(resGraficos) ? resGraficos : []);
+    NEWS_HIST = mapNoticias(Array.isArray(resNoticias) ? resNoticias : []);
+    API_READY = true;
 
-    HISTORICO = Object.values(grouped).sort((a, b) => a.fecha.localeCompare(b.fecha));
-    
-    // Rellenar vacíos (Carry forward) para que los gráficos no tengan cortes
-    let lastKnown = {};
-    HISTORICO.forEach(row => {
-      Object.values(VAR_MAP).forEach(k => {
-        if (row[k] !== undefined) lastKnown[k] = row[k];
-        else if (lastKnown[k] !== undefined) row[k] = lastKnown[k];
-        else row[k] = 0;
-      });
-    });
+    showLoadingState(false);
+    initUI();
 
-    N = HISTORICO.length;
-    if(N < 2) throw new Error("Insuficientes datos históricos.");
-
-    // 4. Inyectar datos específicos del Tablero (ITM)
-    document.getElementById('itmValue').textContent = resTablero.itm_score || 0;
-    const itmBadge = document.getElementById('itmBadge');
-    const estadoItm = (resTablero.itm_estado || "S/D").toUpperCase();
-    itmBadge.textContent = "⬤ " + estadoItm;
-    
-    // Lógica de colores ITM
-    itmBadge.className = "itm-badge " + 
-      (estadoItm.includes('TENSIÓN') ? 'itm-alert' : 
-       estadoItm.includes('PRECAUCIÓN') ? 'itm-warn' : 'itm-ok');
-
-    // 5. Disparar motores de renderizado UI
-    buildTicker();
-    buildKPIs();
-    buildBrechaTable();
-    buildMiniChart();
-    buildNewsDonut();
-    renderNews('todos');
-    buildBase100Checkboxes();
-    buildCruces();
-    updateHistChart();
-    updateBase100Chart();
-
-  } catch (error) {
-    console.error("CORS / Network Error:", error);
-    document.getElementById('itmValue').textContent = "ERR";
-    alert("Error procesando los datos. Verifique la consola.");
+  } catch(err) {
+    console.error('API Error:', err);
+    showError(err.message);
   }
 }
 
-// ====================================================
-//  INIT
-// ====================================================
-document.addEventListener('DOMContentLoaded', () => {
-  const now = new Date();
-  document.getElementById('headerDate').textContent = now.toLocaleDateString('es-AR', {weekday:'long', day:'2-digit', month:'long', year:'numeric'}).toUpperCase();
-  document.getElementById('lastUpdate').textContent = now.toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'}) + ' hs';
-  
-  const d90 = new Date(); d90.setDate(d90.getDate() - 90);
-  document.getElementById('baseDate').value = d90.toISOString().split('T')[0];
+function showLoadingState(loading) {
+  const overlay = document.getElementById('loadingOverlay');
+  if (overlay) overlay.style.display = loading ? 'flex' : 'none';
+}
 
-  // Iniciar fetch de datos reales
-  loadRealData();
-});
+function showError(msg) {
+  showLoadingState(false);
+  const overlay = document.getElementById('loadingOverlay');
+  if (overlay) {
+    overlay.style.display = 'flex';
+    overlay.innerHTML = `
+      <div style="text-align:center;">
+        <div style="color:var(--red); font-family:var(--font-mono); font-size:12px; margin-bottom:8px;">⚠ ERROR DE CONEXIÓN</div>
+        <div style="color:var(--text-muted); font-family:var(--font-mono); font-size:10px; max-width:300px;">${msg}</div>
+        <button onclick="fetchAll()" style="margin-top:16px; background:var(--accent); color:#0a0c0f; border:none; font-family:var(--font-mono); font-size:11px; font-weight:600; padding:8px 16px; border-radius:3px; cursor:pointer;">REINTENTAR</button>
+      </div>
+    `;
+  }
+}
 
 // ====================================================
 //  UTILIDADES
 // ====================================================
 
 const LABELS = {
-  dolar_oficial: 'Dólar Oficial',
-  dolar_blue:    'Dólar Blue',
-  dolar_mep:     'Dólar MEP',
-  dolar_ccl:     'Dólar CCL',
-  brecha:        'Brecha %',
-  reservas:      'Reservas (M USD)',
-  riesgo_pais:   'Riesgo País',
-  merval:        'Merval',
-  ypfd:          'YPF·D',
-  soja:          'Soja (USD/t)',
-  maiz:          'Maíz (USD/t)',
-  trigo:         'Trigo (USD/t)',
-  sp500:         'S&P 500',
+  dolar_oficial:  'Dólar Oficial',
+  dolar_blue:     'Dólar Blue',
+  dolar_mep:      'Dólar MEP',
+  dolar_ccl:      'Dólar CCL',
+  brecha:         'Brecha %',
+  reservas:       'Reservas (M USD)',
+  riesgo_pais:    'Riesgo País',
+  merval:         'Merval',
+  ypfd:           'YPF·D',
+  soja:           'Soja (USD/t)',
+  maiz:           'Maíz (USD/t)',
+  trigo:          'Trigo (USD/t)',
+  sp500:          'S&P 500',
+  base_monetaria: 'Base Monetaria',
+  tasa_bcra:      'Tasa BCRA',
 };
 const COLORS = {
-  dolar_oficial: '#f59e0b',
-  dolar_blue:    '#f43f5e',
-  dolar_mep:     '#00d4aa',
-  dolar_ccl:     '#3b82f6',
-  brecha:        '#a78bfa',
-  reservas:      '#60a5fa',
-  riesgo_pais:   '#f43f5e',
-  merval:        '#34d399',
-  ypfd:          '#fbbf24',
-  soja:          '#6ee7b7',
-  maiz:          '#fde68a',
-  trigo:         '#fed7aa',
-  sp500:         '#93c5fd',
+  dolar_oficial:  '#f59e0b',
+  dolar_blue:     '#f43f5e',
+  dolar_mep:      '#00d4aa',
+  dolar_ccl:      '#3b82f6',
+  brecha:         '#a78bfa',
+  reservas:       '#60a5fa',
+  riesgo_pais:    '#f43f5e',
+  merval:         '#34d399',
+  ypfd:           '#fbbf24',
+  soja:           '#6ee7b7',
+  maiz:           '#fde68a',
+  trigo:          '#fed7aa',
+  sp500:          '#93c5fd',
+  base_monetaria: '#818cf8',
+  tasa_bcra:      '#fb923c',
 };
 
 function fmtNum(n, prefix='', suffix='') {
@@ -776,79 +848,180 @@ function getPrefixSuffix(key) {
   if (key === 'reservas') return ['USD ','M'];
   if (key === 'merval' || key === 'ypfd') return ['$',''];
   if (key === 'sp500') return ['','pts'];
+  if (key === 'tasa_bcra') return ['','%'];
   return ['',''];
 }
 
+// Detecta qué variables están disponibles en HISTORICO
+function availableVars() {
+  if (!HISTORICO.length) return [];
+  const sample = HISTORICO[HISTORICO.length - 1];
+  return Object.keys(LABELS).filter(k => sample[k] != null);
+}
+
 // ====================================================
-//  RENDERERS
+//  INIT
+// ====================================================
+
+document.addEventListener('DOMContentLoaded', () => {
+  // UI estática inmediata
+  const now = new Date();
+  document.getElementById('headerDate').textContent =
+    now.toLocaleDateString('es-AR', {weekday:'long', day:'2-digit', month:'long', year:'numeric'}).toUpperCase();
+
+  const d90 = new Date(TODAY);
+  d90.setDate(d90.getDate() - 90);
+  document.getElementById('baseDate').value = fmt(d90);
+
+  // Arrancar carga de datos
+  fetchAll();
+});
+
+function initUI() {
+  // Fecha de última actualización real
+  if (TABLERO?.hora) {
+    document.getElementById('lastUpdate').textContent = TABLERO.hora + ' hs';
+  }
+
+  buildTicker();
+  buildKPIs();
+  buildBrechaTable();
+  buildMiniChart();
+  buildNewsDonut();
+  renderNews('todos');
+  buildBase100Checkboxes();
+  buildCruces();
+  updateHistChart();
+  updateBase100Chart();
+  populateVarSelects();
+}
+
+// ====================================================
+//  POPULATE SELECTS con variables disponibles
+// ====================================================
+
+function populateVarSelects() {
+  const vars = availableVars();
+  if (!vars.length) return;
+  ['varA','varB'].forEach(id => {
+    const sel = document.getElementById(id);
+    const curr = sel.value;
+    sel.innerHTML = vars.map(v => `<option value="${v}" ${v===curr?'selected':''}>${LABELS[v]||v}</option>`).join('');
+  });
+}
+
+// ====================================================
+//  TICKER
 // ====================================================
 
 function buildTicker() {
-  const last = HISTORICO[N-1];
-  const prev = HISTORICO[N-2];
+  // Usa TABLERO para valores del día + HISTORICO para deltas
+  const N = HISTORICO.length;
+  const last = N >= 2 ? HISTORICO[N-1] : null;
+  const prev = N >= 2 ? HISTORICO[N-2] : null;
+
   const items = ['dolar_oficial','dolar_blue','dolar_mep','dolar_ccl','merval','riesgo_pais','soja','reservas','sp500','brecha'];
   let html = '';
+
   items.forEach(k => {
-    const curr = last[k] || 0, prv = prev[k] || 1;
-    const pct = ((curr-prv)/prv*100);
+    // Valor actual: preferir TABLERO (dato más fresco del día)
+    const tableroKey = { dolar_oficial:'dolar_oficial', dolar_blue:'dolar_blue', dolar_mep:'dolar_mep', dolar_ccl:'dolar_ccl', brecha:'brecha', reservas:'reservas', riesgo_pais:'riesgo_pais' }[k];
+    const curr = (TABLERO && tableroKey && TABLERO[tableroKey] != null) ? TABLERO[tableroKey] : (last ? last[k] : null);
+    const prv  = prev ? prev[k] : null;
+
+    if (curr == null) return;
+    const pct = (prv && prv !== 0) ? ((curr - prv) / Math.abs(prv) * 100) : 0;
     const cls = pct >= 0 ? 'tick-up' : 'tick-down';
     const arr = pct >= 0 ? '▲' : '▼';
     const [pre, suf] = getPrefixSuffix(k);
-    html += `<span class="tick-item">${LABELS[k]} <span class="${cls}">${pre}${fmtNum(curr,'',suf)} ${arr} ${Math.abs(pct).toFixed(2)}%</span></span>`;
+    html += `<span class="tick-item">${LABELS[k]||k} <span class="${cls}">${pre}${fmtNum(curr,'',suf)} ${arr} ${Math.abs(pct).toFixed(2)}%</span></span>`;
   });
+
   const el = document.getElementById('tickerContent');
   el.innerHTML = html + html;
 }
 
+// ====================================================
+//  KPIs — usa TABLERO (datos del día con deltas reales)
+// ====================================================
+
 const KPI_CONFIG = [
-  { key:'dolar_oficial', label:'Dólar Oficial', icon:'$' },
-  { key:'dolar_blue',    label:'Dólar Blue',    icon:'$' },
-  { key:'dolar_mep',     label:'Dólar MEP',     icon:'$' },
-  { key:'dolar_ccl',     label:'Dólar CCL',     icon:'$' },
-  { key:'brecha',        label:'Brecha',        icon:'%' },
-  { key:'reservas',      label:'Reservas',      icon:'↓' },
-  { key:'riesgo_pais',   label:'Riesgo País',   icon:'bp' },
-  { key:'merval',        label:'Merval',        icon:'↑' },
-  { key:'ypfd',          label:'YPF·D',         icon:'$' },
-  { key:'soja',          label:'Soja',          icon:'$' },
-  { key:'sp500',         label:'S&P 500',       icon:'↑' },
-  { key:'maiz',          label:'Maíz',          icon:'$' },
+  { key:'dolar_oficial', label:'Dólar Oficial', deltaKey:'d_oficial' },
+  { key:'dolar_blue',    label:'Dólar Blue',    deltaKey:'d_blue'    },
+  { key:'dolar_mep',     label:'Dólar MEP',     deltaKey:'d_mep'     },
+  { key:'dolar_ccl',     label:'Dólar CCL',     deltaKey:'d_ccl'     },
+  { key:'brecha',        label:'Brecha',        deltaKey:'d_brecha'  },
+  { key:'reservas',      label:'Reservas',      deltaKey:'d_reservas'},
+  { key:'riesgo_pais',   label:'Riesgo País',   deltaKey:'d_riesgo'  },
+  { key:'merval',        label:'Merval',        deltaKey:null        },
+  { key:'ypfd',          label:'YPF·D',         deltaKey:null        },
+  { key:'soja',          label:'Soja',          deltaKey:null        },
+  { key:'sp500',         label:'S&P 500',       deltaKey:null        },
+  { key:'maiz',          label:'Maíz',          deltaKey:null        },
 ];
 
 function buildKPIs() {
-  const last = HISTORICO[N-1];
-  const prev = HISTORICO[N-2];
+  if (!TABLERO) return;
+  const N = HISTORICO.length;
+  const last = N >= 2 ? HISTORICO[N-1] : {};
+  const prev = N >= 2 ? HISTORICO[N-2] : {};
   const grid = document.getElementById('kpiGrid');
   grid.innerHTML = '';
+
+  // ITM
+  document.getElementById('itmValue').textContent = TABLERO.itm_score != null ? TABLERO.itm_score.toFixed(1) : '—';
+  const itmEl = document.getElementById('itmBadge');
+  const itmScore = TABLERO.itm_score || 0;
+  if (itmScore >= 65) {
+    itmEl.className = 'itm-badge itm-alert'; itmEl.textContent = '⬤ TENSIÓN ALTA';
+  } else if (itmScore >= 40) {
+    itmEl.className = 'itm-badge itm-warn';  itmEl.textContent = '⬤ TENSIÓN MODERADA';
+  } else {
+    itmEl.className = 'itm-badge itm-ok';    itmEl.textContent = '⬤ ESTABLE';
+  }
+
   KPI_CONFIG.forEach(cfg => {
-    const curr = last[cfg.key] || 0, prv = prev[cfg.key] || 1;
-    const delta = curr - prv;
-    const pct = (delta / prv * 100);
+    // Valor: TABLERO primero, fallback a HISTORICO
+    const curr = TABLERO[cfg.key] != null ? TABLERO[cfg.key] : last[cfg.key];
+    if (curr == null) return;
+
+    // Delta: si viene de TABLERO usarlo, si no calcularlo con HISTORICO
+    let pct = 0;
+    if (cfg.deltaKey && TABLERO[cfg.deltaKey] != null) {
+      pct = TABLERO[cfg.deltaKey];
+    } else if (prev[cfg.key] != null && prev[cfg.key] !== 0) {
+      pct = (curr - prev[cfg.key]) / Math.abs(prev[cfg.key]) * 100;
+    }
+
     const isUp = pct >= 0;
     const [pre, suf] = getPrefixSuffix(cfg.key);
     const goodUp = !['reservas','riesgo_pais','brecha'].includes(cfg.key);
     const positive = (isUp && goodUp) || (!isUp && !goodUp);
+
     grid.innerHTML += `
       <div class="kpi-card ${positive?'up':'down'}">
         <div class="kpi-label">${cfg.label}</div>
         <div class="kpi-value">${pre}${fmtNum(curr,'',suf)}</div>
         <div class="kpi-delta ${positive?'positive':'negative'}">
-          ${isUp?'▲':'▼'} ${Math.abs(pct).toFixed(2)}% 
-          <span style="opacity:0.6;">(${isUp?'+':''}${fmtNum(delta,pre,suf)})</span>
+          ${isUp?'▲':'▼'} ${Math.abs(pct).toFixed(2)}%
         </div>
       </div>
     `;
   });
 }
 
+// ====================================================
+//  BRECHA TABLE
+// ====================================================
+
 function buildBrechaTable() {
-  const last = HISTORICO[N-1];
-  const ofi = last.dolar_oficial || 1;
+  if (!TABLERO) return;
+  const of = TABLERO.dolar_oficial;
   const rows = [
-    { label:'Oficial',  val: last.dolar_oficial, brecha: 0 },
-    { label:'MEP',      val: last.dolar_mep,    brecha: Math.round((last.dolar_mep/ofi-1)*100) },
-    { label:'CCL',      val: last.dolar_ccl,    brecha: Math.round((last.dolar_ccl/ofi-1)*100) },
-    { label:'Blue',     val: last.dolar_blue,   brecha: Math.round((last.dolar_blue/ofi-1)*100) },
+    { label:'Oficial', val: of,                brecha: 0 },
+    { label:'MEP',     val: TABLERO.dolar_mep,  brecha: of ? Math.round((TABLERO.dolar_mep/of-1)*100) : null },
+    { label:'CCL',     val: TABLERO.dolar_ccl,  brecha: of ? Math.round((TABLERO.dolar_ccl/of-1)*100) : null },
+    { label:'Blue',    val: TABLERO.dolar_blue, brecha: of ? Math.round((TABLERO.dolar_blue/of-1)*100) : null },
   ];
   let html = `
     <table style="width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:12px;">
@@ -856,35 +1029,40 @@ function buildBrechaTable() {
       <th style="text-align:left; color:var(--text-muted); font-size:9px; letter-spacing:0.1em; padding-bottom:10px; border-bottom:1px solid var(--border);">TIPO</th>
       <th style="text-align:right; color:var(--text-muted); font-size:9px; letter-spacing:0.1em; padding-bottom:10px; border-bottom:1px solid var(--border);">VALOR</th>
       <th style="text-align:right; color:var(--text-muted); font-size:9px; letter-spacing:0.1em; padding-bottom:10px; border-bottom:1px solid var(--border);">VS OFIC.</th>
-    </tr></thead>
-    <tbody>
+    </tr></thead><tbody>
   `;
   rows.forEach(r => {
-    const color = r.brecha === 0 ? 'var(--text-secondary)' : r.brecha < 30 ? 'var(--accent)' : r.brecha < 60 ? 'var(--gold)' : 'var(--red)';
+    if (r.val == null) return;
+    const color = r.brecha === 0 ? 'var(--text-secondary)' : (r.brecha < 30 ? 'var(--accent)' : r.brecha < 60 ? 'var(--gold)' : 'var(--red)');
     html += `<tr>
       <td style="padding:10px 0; border-bottom:1px solid var(--border); color:var(--text-secondary);">${r.label}</td>
       <td style="padding:10px 0; border-bottom:1px solid var(--border); text-align:right; color:var(--text-primary);">$${fmtNum(r.val)}</td>
-      <td style="padding:10px 0; border-bottom:1px solid var(--border); text-align:right; color:${color};">${r.brecha === 0 ? '—' : '+'+r.brecha+'%'}</td>
+      <td style="padding:10px 0; border-bottom:1px solid var(--border); text-align:right; color:${color};">${r.brecha === 0 ? '—' : (r.brecha > 0 ? '+' : '')+r.brecha+'%'}</td>
     </tr>`;
   });
   html += '</tbody></table>';
   document.getElementById('brechaTable').innerHTML = html;
 }
 
+// ====================================================
+//  MINI CHART (últimos 30 días)
+// ====================================================
+
 let miniChartInst = null;
 function buildMiniChart() {
   const last30 = HISTORICO.slice(-30);
-  const dates  = last30.map(r => r.fecha);
+  if (!last30.length) return;
+  const dates = last30.map(r => r.fecha);
   if (miniChartInst) { miniChartInst.destroy(); }
   miniChartInst = new ApexCharts(document.getElementById('miniChart'), {
-    chart: { type:'line', height:220, background:'transparent', toolbar:{show:false}, animations:{enabled:false}, sparkline:{enabled:false} },
+    chart: { type:'line', height:220, background:'transparent', toolbar:{show:false}, animations:{enabled:false} },
     theme: { mode:'dark' },
     series: [
-      { name:'MEP',      data: last30.map(r=>r.dolar_mep) },
-      { name:'CCL',      data: last30.map(r=>r.dolar_ccl) },
-      { name:'Blue',     data: last30.map(r=>r.dolar_blue) },
-      { name:'Oficial',  data: last30.map(r=>r.dolar_oficial) },
-    ],
+      { name:'MEP',     data: last30.map(r => r.dolar_mep    ?? null) },
+      { name:'CCL',     data: last30.map(r => r.dolar_ccl    ?? null) },
+      { name:'Blue',    data: last30.map(r => r.dolar_blue   ?? null) },
+      { name:'Oficial', data: last30.map(r => r.dolar_oficial ?? null) },
+    ].filter(s => s.data.some(v => v != null)),
     xaxis: { categories: dates, labels:{style:{fontFamily:'IBM Plex Mono',fontSize:'9px',colors:'#7a8899'}, rotate:-30}, axisBorder:{color:'#1e2530'}, axisTicks:{color:'#1e2530'}, tickAmount:6 },
     yaxis: { labels:{style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}, formatter:v=>'$'+Math.round(v).toLocaleString('es-AR')}, axisBorder:{show:false} },
     colors: ['#00d4aa','#3b82f6','#f43f5e','#f59e0b'],
@@ -896,8 +1074,13 @@ function buildMiniChart() {
   miniChartInst.render();
 }
 
+// ====================================================
+//  HIST CHART
+// ====================================================
+
 let histChartInst = null;
 function updateHistChart() {
+  if (!HISTORICO.length) return;
   const keyA = document.getElementById('varA').value;
   const keyB = document.getElementById('varB').value;
   const dias  = parseInt(document.getElementById('periodoHist').value);
@@ -905,7 +1088,7 @@ function updateHistChart() {
 
   const slice = HISTORICO.slice(-dias);
   const dates = slice.map(r => r.fecha);
-  document.getElementById('histChartTitle').textContent = `${LABELS[keyA]} vs ${LABELS[keyB]}`;
+  document.getElementById('histChartTitle').textContent = `${LABELS[keyA]||keyA} vs ${LABELS[keyB]||keyB}`;
 
   const [preA] = getPrefixSuffix(keyA);
   const [preB] = getPrefixSuffix(keyB);
@@ -915,13 +1098,13 @@ function updateHistChart() {
     chart: { type:'line', height:340, background:'transparent', toolbar:{show:true, tools:{download:true, zoom:true, reset:true}}, animations:{enabled:false} },
     theme: { mode:'dark' },
     series: [
-      { name: LABELS[keyA], data: slice.map(r=>r[keyA]) },
-      { name: LABELS[keyB], data: slice.map(r=>r[keyB]) },
+      { name: LABELS[keyA]||keyA, data: slice.map(r => r[keyA] ?? null) },
+      { name: LABELS[keyB]||keyB, data: slice.map(r => r[keyB] ?? null) },
     ],
     xaxis: { categories: dates, labels:{style:{fontFamily:'IBM Plex Mono',fontSize:'9px',colors:'#7a8899'}, rotate:-30}, axisBorder:{color:'#1e2530'}, axisTicks:{color:'#1e2530'}, tickAmount:8 },
     yaxis: dual ? [
-      { seriesName: LABELS[keyA], labels:{formatter:v=>preA+Math.round(v).toLocaleString('es-AR'), style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}}, axisBorder:{show:false} },
-      { seriesName: LABELS[keyB], opposite: true, labels:{formatter:v=>preB+Math.round(v).toLocaleString('es-AR'), style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}}, axisBorder:{show:false} }
+      { seriesName: LABELS[keyA]||keyA, labels:{formatter:v=>preA+Math.round(v).toLocaleString('es-AR'), style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}}, axisBorder:{show:false} },
+      { seriesName: LABELS[keyB]||keyB, opposite: true, labels:{formatter:v=>preB+Math.round(v).toLocaleString('es-AR'), style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}}, axisBorder:{show:false} }
     ] : { labels:{style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}}, axisBorder:{show:false} },
     colors: [COLORS[keyA]||'#00d4aa', COLORS[keyB]||'#3b82f6'],
     stroke: { width:[2,2], curve:'smooth' },
@@ -932,23 +1115,29 @@ function updateHistChart() {
   histChartInst.render();
 }
 
+// ====================================================
+//  NOTICIAS
+// ====================================================
+
 let currentFilter = 'todos';
 let donutInst = null;
 
 function renderNews(filtro) {
   currentFilter = filtro;
   const filtered = filtro === 'todos' ? NEWS_HIST : NEWS_HIST.filter(n => n.ambito === filtro);
-  document.getElementById('newsCount').textContent = `${filtered.length} titulares ${filtro !== 'todos' ? '· '+filtro : ''}`;
+  document.getElementById('newsCount').textContent = `${filtered.length} titulares${filtro !== 'todos' ? ' · '+filtro : ''}`;
 
   let html = '';
   filtered.forEach(n => {
-    const badgeClass = `badge-${(n.ambito||'nacional').toLowerCase()}`;
+    const am = n.ambito || 'Nacional';
+    const badgeClass = `badge-${am.toLowerCase()}`;
+    const link = (n.url && n.url !== '#') ? `href="${n.url}" target="_blank" rel="noopener"` : '';
     html += `
       <div class="news-item">
-        <span class="news-badge ${badgeClass}">${(n.ambito||'NACIONAL').toUpperCase()}</span>
+        <span class="news-badge ${badgeClass}">${am.toUpperCase()}</span>
         <div>
-          <a href="${n.url}" class="news-title" target="_blank">${n.titular}</a>
-          <div class="news-date">${n.fecha}</div>
+          <a ${link} class="news-title">${n.titular || '—'}</a>
+          <div class="news-date">${n.fecha} ${n.source ? '· '+n.source : ''}</div>
         </div>
       </div>
     `;
@@ -959,8 +1148,8 @@ function renderNews(filtro) {
   AMBITOS.forEach(a => counts[a] = NEWS_HIST.filter(n=>n.ambito===a).length);
   let statsHtml = '<div style="display:flex; flex-wrap:wrap; gap:10px;">';
   AMBITOS.forEach(a => {
-    const badgeClass = `badge-${a.toLowerCase()}`;
-    statsHtml += `<span class="news-badge ${badgeClass}" style="font-size:10px; padding:3px 8px;">${a}: ${counts[a]}</span>`;
+    if (!counts[a]) return;
+    statsHtml += `<span class="news-badge badge-${a.toLowerCase()}" style="font-size:10px; padding:3px 8px;">${a}: ${counts[a]}</span>`;
   });
   statsHtml += '</div>';
   document.getElementById('newsStats').innerHTML = statsHtml;
@@ -974,6 +1163,7 @@ function filterNews(filtro, btn) {
 
 function buildNewsDonut() {
   const counts = AMBITOS.map(a => NEWS_HIST.filter(n=>n.ambito===a).length);
+  if (!counts.some(c => c > 0)) return;
   if (donutInst) donutInst.destroy();
   donutInst = new ApexCharts(document.getElementById('newsDonut'), {
     chart: { type:'donut', height:260, background:'transparent', toolbar:{show:false} },
@@ -989,24 +1179,29 @@ function buildNewsDonut() {
   donutInst.render();
 }
 
-const BASE100_VARS = ['dolar_oficial','dolar_mep','dolar_ccl','merval','riesgo_pais','reservas','soja'];
+// ====================================================
+//  BASE 100
+// ====================================================
+
 let base100Inst = null;
 
 function buildBase100Checkboxes() {
+  const vars = availableVars();
+  const defaults = ['dolar_oficial','dolar_mep','dolar_ccl','merval','riesgo_pais','reservas','soja'];
   const container = document.getElementById('b100CheckBoxes');
   container.innerHTML = '';
-  BASE100_VARS.forEach((v, i) => {
-    const checked = i < 4;
+  (vars.length ? vars : defaults).slice(0,8).forEach((v, i) => {
     container.innerHTML += `
       <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
-        <input type="checkbox" value="${v}" ${checked?'checked':''} style="accent-color:var(--accent); width:12px; height:12px;">
-        <span style="color:${COLORS[v]||'var(--text-secondary)'};">${LABELS[v]}</span>
+        <input type="checkbox" value="${v}" ${i<4?'checked':''} style="accent-color:var(--accent); width:12px; height:12px;">
+        <span style="color:${COLORS[v]||'var(--text-secondary)'};">${LABELS[v]||v}</span>
       </label>
     `;
   });
 }
 
 function updateBase100Chart() {
+  if (!HISTORICO.length) return;
   const baseVal = document.getElementById('baseDate').value;
   const checked = [...document.querySelectorAll('#b100CheckBoxes input:checked')].map(el=>el.value);
   if (!checked.length) return;
@@ -1016,11 +1211,14 @@ function updateBase100Chart() {
   const sliced = HISTORICO.slice(idx);
   const dates = sliced.map(r => r.fecha);
 
-  const series = checked.map(k => ({
-    name: LABELS[k],
-    data: sliced.map(r => Math.round((r[k]||0) / (sliced[0][k]||1) * 100 * 100) / 100)
-  }));
+  const series = checked
+    .filter(k => sliced[0]?.[k] != null)
+    .map(k => ({
+      name: LABELS[k]||k,
+      data: sliced.map(r => r[k] != null ? Math.round(r[k] / sliced[0][k] * 100 * 100) / 100 : null)
+    }));
 
+  if (!series.length) return;
   if (base100Inst) base100Inst.destroy();
   base100Inst = new ApexCharts(document.getElementById('base100Chart'), {
     chart: { type:'line', height:340, background:'transparent', toolbar:{show:true}, animations:{enabled:false} },
@@ -1033,49 +1231,66 @@ function updateBase100Chart() {
     grid: { borderColor:'#1e2530', strokeDashArray:3 },
     annotations: { yaxis:[{ y:100, borderColor:'#3d4d5f', strokeDashArray:4, label:{text:'BASE 100', style:{fontFamily:'IBM Plex Mono', fontSize:'9px', color:'#7a8899', background:'transparent'}} }] },
     legend: { fontFamily:'IBM Plex Mono', fontSize:'10px', labels:{colors:'#7a8899'} },
-    tooltip: { x:{format:'dd/MM/yy'}, shared:true, intersect:false, y:{formatter:v=>v.toFixed(2)} },
+    tooltip: { x:{format:'dd/MM/yy'}, shared:true, intersect:false, y:{formatter:v=>v != null ? v.toFixed(2) : '—'} },
   });
   base100Inst.render();
 }
 
+// ====================================================
+//  CRUCES PREDEFINIDOS
+// ====================================================
+
 const CRUCES = [
-  { a:'dolar_mep',   b:'merval',     label:'MEP vs Merval' },
-  { a:'dolar_ccl',   b:'merval',     label:'CCL vs Merval' },
-  { a:'riesgo_pais', b:'merval',     label:'Riesgo País vs Merval' },
-  { a:'reservas',    b:'dolar_mep',  label:'Reservas vs MEP' },
-  { a:'soja',        b:'dolar_mep',  label:'Soja vs Dólar MEP' },
-  { a:'brecha',      b:'riesgo_pais',label:'Brecha vs Riesgo País' },
-  { a:'merval',      b:'ypfd',       label:'Merval vs YPF·D' },
-  { a:'dolar_oficial',b:'soja',      label:'Dólar Oficial vs Soja' },
+  { a:'dolar_mep',    b:'merval',      label:'MEP vs Merval' },
+  { a:'dolar_ccl',    b:'merval',      label:'CCL vs Merval' },
+  { a:'riesgo_pais',  b:'merval',      label:'Riesgo País vs Merval' },
+  { a:'reservas',     b:'dolar_mep',   label:'Reservas vs MEP' },
+  { a:'soja',         b:'dolar_mep',   label:'Soja vs Dólar MEP' },
+  { a:'brecha',       b:'riesgo_pais', label:'Brecha vs Riesgo País' },
+  { a:'merval',       b:'ypfd',        label:'Merval vs YPF·D' },
+  { a:'dolar_oficial',b:'soja',        label:'Dólar Oficial vs Soja' },
 ];
 
 function buildCruces() {
   const grid = document.getElementById('crucesGrid');
   grid.innerHTML = '';
-  CRUCES.forEach((c) => {
-    const slice = HISTORICO.slice(-30);
-    const xs = slice.map(r=>r[c.a]||0);
-    const ys = slice.map(r=>r[c.b]||0);
-    const mx = xs.reduce((s,v)=>s+v,0)/xs.length;
-    const my = ys.reduce((s,v)=>s+v,0)/ys.length;
-    const num = xs.reduce((s,v,i)=>s+(v-mx)*(ys[i]-my),0);
-    const den = Math.sqrt(xs.reduce((s,v)=>s+(v-mx)**2,0)*ys.reduce((s,v)=>s+(v-my)**2,0));
-    const corr = den ? (num/den).toFixed(2) : '—';
-    const corrColor = Math.abs(corr) > 0.7 ? (corr > 0 ? 'var(--accent)' : 'var(--red)') : 'var(--gold)';
+  const slice = HISTORICO.slice(-30);
+  if (!slice.length) return;
+
+  CRUCES.forEach(c => {
+    const xs = slice.map(r=>r[c.a]).filter(v=>v!=null);
+    const ys = slice.map(r=>r[c.b]).filter(v=>v!=null);
+    let corr = '—';
+    let corrColor = 'var(--text-muted)';
+    if (xs.length > 5 && ys.length > 5) {
+      const n = Math.min(xs.length, ys.length);
+      const xS = xs.slice(-n), yS = ys.slice(-n);
+      const mx = xS.reduce((s,v)=>s+v,0)/n;
+      const my = yS.reduce((s,v)=>s+v,0)/n;
+      const num = xS.reduce((s,v,i)=>s+(v-mx)*(yS[i]-my),0);
+      const den = Math.sqrt(xS.reduce((s,v)=>s+(v-mx)**2,0)*yS.reduce((s,v)=>s+(v-my)**2,0));
+      if (den) {
+        const r = num/den;
+        corr = r.toFixed(2);
+        corrColor = Math.abs(r) > 0.7 ? (r > 0 ? 'var(--accent)' : 'var(--red)') : 'var(--gold)';
+      }
+    }
+    const corrNum = parseFloat(corr);
+    const corrLabel = isNaN(corrNum) ? '→ Sin datos suficientes' :
+      Math.abs(corrNum) > 0.7 ? (corrNum > 0 ? '↑ Correlación positiva fuerte' : '↓ Correlación inversa fuerte') :
+      '→ Correlación débil/moderada';
 
     grid.innerHTML += `
       <div class="kpi-card" style="cursor:pointer;" onclick="quickCruce('${c.a}','${c.b}')">
         <div class="kpi-label">${c.label}</div>
-        <div style="font-family:var(--font-mono); font-size:13px; color:var(--text-secondary); margin-top:4px;">
-          ${LABELS[c.a]} <span style="color:var(--text-muted);">↔</span> ${LABELS[c.b]}
+        <div style="font-family:var(--font-mono); font-size:12px; color:var(--text-secondary); margin-top:4px;">
+          ${LABELS[c.a]||c.a} <span style="color:var(--text-muted);">↔</span> ${LABELS[c.b]||c.b}
         </div>
         <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
           <span style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); letter-spacing:0.08em;">CORREL. 30D</span>
           <span style="font-family:var(--font-mono); font-size:13px; font-weight:600; color:${corrColor};">${corr}</span>
         </div>
-        <div style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); margin-top:4px;">
-          ${Math.abs(corr) > 0.7 ? (corr > 0 ? '↑ Correlación positiva fuerte' : '↓ Correlación inversa fuerte') : '→ Correlación débil/moderada'}
-        </div>
+        <div style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); margin-top:4px;">${corrLabel}</div>
       </div>
     `;
   });
@@ -1088,6 +1303,10 @@ function quickCruce(a, b) {
   setTimeout(updateHistChart, 100);
 }
 
+// ====================================================
+//  NAVEGACIÓN
+// ====================================================
+
 function showSection(id, el) {
   ['tablero','graficos','noticias','cruces'].forEach(s => {
     const sec = document.getElementById('s-'+s);
@@ -1097,5 +1316,32 @@ function showSection(id, el) {
   if (el) el.classList.add('active');
 }
 </script>
-</body>
-</html>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay" style="
+  position:fixed; inset:0; z-index:9000;
+  background:rgba(10,12,15,0.92);
+  display:flex; align-items:center; justify-content:center;
+  backdrop-filter:blur(4px);
+">
+  <div style="text-align:center;">
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#00d4aa; letter-spacing:0.15em; margin-bottom:16px; animation: pulse 1.5s infinite;">
+      CONECTANDO A LA API…
+    </div>
+    <div style="display:flex; gap:6px; justify-content:center;">
+      <div style="width:6px;height:6px;border-radius:50%;background:#00d4aa;animation:bounce 1.2s 0s infinite;"></div>
+      <div style="width:6px;height:6px;border-radius:50%;background:#00d4aa;animation:bounce 1.2s 0.2s infinite;"></div>
+      <div style="width:6px;height:6px;border-radius:50%;background:#00d4aa;animation:bounce 1.2s 0.4s infinite;"></div>
+    </div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; color:#3d4d5f; margin-top:16px; letter-spacing:0.1em;">
+      Apps Script → Google Sheets → Pulso Macro
+    </div>
+  </div>
+</div>
+<style>
+@keyframes bounce {
+  0%,100%{transform:translateY(0);opacity:0.4;}
+  50%{transform:translateY(-8px);opacity:1;}
+}
+</style>
+</body></html>
