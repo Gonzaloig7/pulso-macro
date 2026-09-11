@@ -1,0 +1,7 @@
+﻿# Backend de referencia (Apps Script) - NO va al repo publico
+apps_script_actual.gs
+*.gs
+
+# Locales
+.DS_Store
+Thumbs.db

@@ -240,6 +240,28 @@
   .var-select:focus, .var-select:hover { border-color: var(--accent); }
   option { background: #0e1116; }
 
+  /* Toggle modo estructural — mismo look que .news-btn */
+  .est-btn {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 7px 14px;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .est-btn:hover { border-color: var(--border-bright); color: var(--text-primary); }
+  .est-btn.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
   /* Filtro noticias */
   .news-btn {
     font-family: var(--font-mono);
@@ -423,6 +445,7 @@
       <a href="#graficos" onclick="showSection('graficos',this)">Gráficos</a>
       <a href="#noticias" onclick="showSection('noticias',this)">Noticias</a>
       <a href="#cruces" onclick="showSection('cruces',this)">Cruces</a>
+      <a href="#estructural" onclick="showSection('estructural',this)">Estructural</a>
     </nav>
     <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-muted);" id="headerDate"></div>
   </div>
@@ -605,6 +628,39 @@
     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px;" id="crucesGrid"></div>
   </section>
 
+  <!-- =================== SECCIÓN ESTRUCTURAL =================== -->
+  <section id="s-estructural" style="display:none;" class="fade-in">
+    <div class="section-label">Variables estructurales — mensuales desde dic-2023</div>
+
+    <!-- KPIs: último valor + variación interanual -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:24px;" id="estKpiGrid"></div>
+
+    <!-- Controles del gráfico -->
+    <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:20px; align-items:flex-end;">
+      <div>
+        <div style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:4px; letter-spacing:0.1em;">MODO</div>
+        <div style="display:flex; gap:6px;">
+          <button class="est-btn active" data-modo="nominal" onclick="setEstModo('nominal',this)">NOMINAL</button>
+          <button class="est-btn" data-modo="base100" onclick="setEstModo('base100',this)">BASE 100</button>
+        </div>
+      </div>
+      <div id="estVarWrap">
+        <div style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:4px; letter-spacing:0.1em;">VARIABLE</div>
+        <select id="estVarSelect" class="var-select" onchange="updateEstChart()"></select>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-header">
+        <div class="panel-dot"></div>
+        <span class="panel-title" id="estChartTitle">Serie histórica</span>
+      </div>
+      <div style="padding:8px;"><div id="estChart"></div></div>
+    </div>
+
+    <div style="font-family:var(--font-mono); font-size:9px; color:var(--text-muted); letter-spacing:0.08em; text-align:right;" id="estFuentes"></div>
+  </section>
+
 </main>
 
 <!-- Footer -->
@@ -626,6 +682,7 @@ const API_BASE = "https://script.google.com/macros/s/AKfycbxRBNUvxU-NWUAFGahAfZ5
 let TABLERO    = null;  // objeto fila más reciente de HISTORICO
 let HISTORICO  = [];    // array normalizado para gráficos (de SERIES_HIST)
 let NEWS_HIST  = [];    // array de noticias
+let ESTRUCTURAL = null; // { variables:[...], porVariable:{}, periodos:[] } — de ESTRUCTURAL_HIST
 let API_READY  = false;
 
 const TODAY = new Date();
@@ -748,23 +805,82 @@ function toN(v) {
 }
 
 // ====================================================
+//  ESTRUCTURAL — agrupa las filas de ESTRUCTURAL_HIST por variable
+//  Fila cruda: { periodo:"2023-12", fecha:"01/12/2023", grupo, variable,
+//                valor, unidad, var_mensual_pct, var_interanual_pct,
+//                frecuencia, fuente }
+// ====================================================
+
+function mapEstructural(rawRows) {
+  const porVariable = {};
+  const periodosSet = {};
+
+  rawRows.forEach(r => {
+    const variable = String(r.variable || '').trim();
+    const periodo  = String(r.periodo  || '').trim();
+    if (!variable || !/^\d{4}-\d{2}$/.test(periodo)) return;
+
+    const valor = toN(r.valor);
+    if (valor == null) return;
+
+    if (!porVariable[variable]) {
+      porVariable[variable] = {
+        variable,
+        grupo:      r.grupo      || '',
+        unidad:     r.unidad     || '',
+        fuente:     r.fuente     || '',
+        frecuencia: r.frecuencia || '',
+        puntos:     []
+      };
+    }
+
+    porVariable[variable].puntos.push({
+      periodo,
+      fecha:      r.fecha || '',
+      valor,
+      var_mensual:    toN(r.var_mensual_pct),
+      var_interanual: toN(r.var_interanual_pct)
+    });
+
+    periodosSet[periodo] = true;
+  });
+
+  // Orden cronológico dentro de cada variable (el endpoint ya viene ordenado,
+  // pero no dependemos de eso)
+  Object.values(porVariable).forEach(v => {
+    v.puntos.sort((a,b) => a.periodo < b.periodo ? -1 : a.periodo > b.periodo ? 1 : 0);
+    v.ultimo = v.puntos[v.puntos.length - 1] || null;
+  });
+
+  return {
+    variables:   Object.keys(porVariable).sort(),
+    porVariable,
+    periodos:    Object.keys(periodosSet).sort()
+  };
+}
+
+// ====================================================
 //  CARGA DE DATOS DESDE LA API
 // ====================================================
 
 async function fetchAll() {
   showLoadingState(true);
   try {
-    const [resTablero, resGraficos, resNoticias] = await Promise.all([
+    const [resTablero, resGraficos, resNoticias, resEstructural] = await Promise.all([
       fetch(`${API_BASE}?action=tablero`).then(r => r.json()),
       fetch(`${API_BASE}?action=graficos`).then(r => r.json()),
       fetch(`${API_BASE}?action=noticias`).then(r => r.json()),
+      // El endpoint estructural es opcional: si falla, la sección queda vacía
+      // pero las otras 4 siguen funcionando.
+      fetch(`${API_BASE}?action=estructural`).then(r => r.json()).catch(() => []),
     ]);
 
     if (resTablero.error) throw new Error('Tablero: ' + resTablero.error);
 
-    TABLERO   = mapTablero(resTablero);
-    HISTORICO = normalizeSeries(Array.isArray(resGraficos) ? resGraficos : []);
-    NEWS_HIST = mapNoticias(Array.isArray(resNoticias) ? resNoticias : []);
+    TABLERO     = mapTablero(resTablero);
+    HISTORICO   = normalizeSeries(Array.isArray(resGraficos) ? resGraficos : []);
+    NEWS_HIST   = mapNoticias(Array.isArray(resNoticias) ? resNoticias : []);
+    ESTRUCTURAL = mapEstructural(Array.isArray(resEstructural) ? resEstructural : []);
     API_READY = true;
 
     showLoadingState(false);
@@ -894,6 +1010,7 @@ function initUI() {
   updateHistChart();
   updateBase100Chart();
   populateVarSelects();
+  buildEstructural();
 }
 
 // ====================================================
@@ -1304,16 +1421,183 @@ function quickCruce(a, b) {
 }
 
 // ====================================================
+//  ESTRUCTURAL — KPIs + gráfico (nominal / base 100)
+// ====================================================
+
+let estChartInst = null;
+let estModo = 'nominal';
+
+// Colores propios, en la misma paleta que COLORS
+const EST_COLORS = {
+  'EMAE':                     '#00d4aa',
+  'Empleo registrado (SIPA)': '#3b82f6',
+  'Índice de salarios':       '#a78bfa',
+};
+const estColor = v => EST_COLORS[v] || '#7a8899';
+
+/** "2023-12" -> "DIC-23" */
+function periodoCorto(p) {
+  const MESES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+  const m = String(p||'').match(/^(\d{4})-(\d{2})$/);
+  if (!m) return p || '';
+  return MESES[Number(m[2]) - 1] + '-' + m[1].slice(2);
+}
+
+/** Los índices llevan 1 decimal; las magnitudes grandes van con separador de miles */
+function fmtEstValor(v) {
+  if (v == null) return '—';
+  return Math.abs(v) >= 1000
+    ? v.toLocaleString('es-AR', {maximumFractionDigits:0})
+    : v.toLocaleString('es-AR', {minimumFractionDigits:1, maximumFractionDigits:1});
+}
+
+function buildEstructural() {
+  const grid = document.getElementById('estKpiGrid');
+  const sel  = document.getElementById('estVarSelect');
+  if (!grid || !sel) return;
+
+  const vars = ESTRUCTURAL ? ESTRUCTURAL.variables : [];
+
+  if (!vars.length) {
+    grid.innerHTML = `
+      <div style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted); padding:16px;">
+        Sin datos estructurales disponibles.
+      </div>`;
+    sel.innerHTML = '';
+    document.getElementById('estFuentes').textContent = '';
+    return;
+  }
+
+  // --- KPI cards: último valor + interanual destacada ---
+  grid.innerHTML = '';
+  vars.forEach(name => {
+    const serie = ESTRUCTURAL.porVariable[name];
+    const ult   = serie.ultimo;
+    if (!ult) return;
+
+    const ia       = ult.var_interanual;
+    const tieneIa  = ia != null;
+    const positive = tieneIa && ia >= 0;
+
+    grid.innerHTML += `
+      <div class="kpi-card ${tieneIa ? (positive ? 'up' : 'down') : ''}">
+        <div class="kpi-label">${name}</div>
+        <div class="kpi-value">${fmtEstValor(ult.valor)}</div>
+        <div style="font-family:var(--font-mono); font-size:9px; color:var(--text-muted); letter-spacing:0.06em; margin-top:2px;">
+          ${serie.unidad || ''} · ${periodoCorto(ult.periodo)}
+        </div>
+        <div class="kpi-delta ${tieneIa ? (positive ? 'positive' : 'negative') : ''}" style="margin-top:8px;">
+          ${tieneIa ? (positive ? '▲' : '▼') + ' ' + Math.abs(ia).toFixed(1) + '% i.a.' : '— i.a.'}
+        </div>
+      </div>
+    `;
+  });
+
+  // --- Selector de variable (modo nominal) ---
+  sel.innerHTML = vars.map(v => `<option value="${v}">${v}</option>`).join('');
+
+  // --- Pie de fuentes ---
+  const fuentes = [...new Set(vars.map(v => ESTRUCTURAL.porVariable[v].fuente).filter(Boolean))];
+  document.getElementById('estFuentes').textContent =
+    fuentes.length ? 'Fuentes: ' + fuentes.join(' · ') : '';
+
+  updateEstChart();
+}
+
+function setEstModo(modo, el) {
+  estModo = modo;
+  document.querySelectorAll('.est-btn').forEach(b => b.classList.remove('active'));
+  if (el) el.classList.add('active');
+  // El selector de variable solo aplica al modo nominal
+  document.getElementById('estVarWrap').style.visibility = (modo === 'nominal') ? 'visible' : 'hidden';
+  updateEstChart();
+}
+
+function updateEstChart() {
+  const cont = document.getElementById('estChart');
+  if (!cont || !ESTRUCTURAL || !ESTRUCTURAL.variables.length) return;
+
+  const periodos = ESTRUCTURAL.periodos;
+  const labels   = periodos.map(periodoCorto);
+
+  let series = [], colores = [], titulo = '', fmtY, fmtTip;
+
+  if (estModo === 'base100') {
+    // Las 3 comparadas, indexadas a su primer período con dato
+    ESTRUCTURAL.variables.forEach(name => {
+      const serie = ESTRUCTURAL.porVariable[name];
+      const mapa  = {};
+      serie.puntos.forEach(p => mapa[p.periodo] = p.valor);
+
+      const base = serie.puntos.length ? serie.puntos[0].valor : null;
+      if (!base) return;
+
+      series.push({
+        name,
+        data: periodos.map(p => mapa[p] != null ? Math.round(mapa[p] / base * 10000) / 100 : null)
+      });
+      colores.push(estColor(name));
+    });
+
+    const primerPeriodo = periodos.length ? periodoCorto(periodos[0]) : '';
+    titulo = `Base 100 = ${primerPeriodo} · comparación de las 3 series`;
+    fmtY   = v => v != null ? v.toFixed(0) : '';
+    fmtTip = v => v != null ? v.toFixed(1) : '—';
+
+  } else {
+    // Una sola variable, con su valor real
+    const name  = document.getElementById('estVarSelect').value || ESTRUCTURAL.variables[0];
+    const serie = ESTRUCTURAL.porVariable[name];
+    if (!serie) return;
+
+    const mapa = {};
+    serie.puntos.forEach(p => mapa[p.periodo] = p.valor);
+
+    series  = [{ name, data: periodos.map(p => mapa[p] != null ? mapa[p] : null) }];
+    colores = [estColor(name)];
+    titulo  = `${name}${serie.unidad ? ' · ' + serie.unidad : ''}`;
+    fmtY    = v => v != null ? fmtEstValor(v) : '';
+    fmtTip  = v => v != null ? fmtEstValor(v) : '—';
+  }
+
+  document.getElementById('estChartTitle').textContent = titulo;
+  if (!series.length) return;
+
+  if (estChartInst) estChartInst.destroy();
+  estChartInst = new ApexCharts(cont, {
+    chart: { type:'line', height:360, background:'transparent', toolbar:{show:true, tools:{download:true, zoom:true, reset:true}}, animations:{enabled:false} },
+    theme: { mode:'dark' },
+    series,
+    xaxis: { categories: labels, labels:{style:{fontFamily:'IBM Plex Mono',fontSize:'9px',colors:'#7a8899'}, rotate:-45}, axisBorder:{color:'#1e2530'}, axisTicks:{color:'#1e2530'}, tickAmount:12 },
+    yaxis: { labels:{formatter:fmtY, style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}}, axisBorder:{show:false} },
+    colors: colores,
+    stroke: { width:2, curve:'smooth' },
+    markers: { size:0, hover:{size:4} },
+    grid: { borderColor:'#1e2530', strokeDashArray:3 },
+    annotations: estModo === 'base100'
+      ? { yaxis:[{ y:100, borderColor:'#3d4d5f', strokeDashArray:4, label:{text:'BASE 100', style:{fontFamily:'IBM Plex Mono', fontSize:'9px', color:'#7a8899', background:'transparent'}} }] }
+      : {},
+    legend: { show: estModo === 'base100', fontFamily:'IBM Plex Mono', fontSize:'10px', labels:{colors:'#7a8899'} },
+    tooltip: { shared:true, intersect:false, y:{formatter:fmtTip} },
+  });
+  estChartInst.render();
+}
+
+// ====================================================
 //  NAVEGACIÓN
 // ====================================================
 
 function showSection(id, el) {
-  ['tablero','graficos','noticias','cruces'].forEach(s => {
+  ['tablero','graficos','noticias','cruces','estructural'].forEach(s => {
     const sec = document.getElementById('s-'+s);
     if (sec) sec.style.display = s===id ? '' : 'none';
   });
   document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
   if (el) el.classList.add('active');
+
+  // ApexCharts mide mal el ancho si se renderiza con la sección oculta:
+  // al mostrar Estructural, redibujamos con el contenedor ya visible.
+  if (id === 'estructural') setTimeout(updateEstChart, 50);
 }
 </script>
 
