@@ -650,6 +650,17 @@
       </div>
     </div>
 
+    <!-- Selección múltiple (solo modo base 100) -->
+    <div id="estCheckWrap" style="display:none; margin-bottom:20px;">
+      <div style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:8px; letter-spacing:0.1em;">VARIABLES A COMPARAR</div>
+      <div id="estCheckBoxes"></div>
+      <div style="display:flex; gap:6px; margin-top:10px;">
+        <button class="est-btn" onclick="estSelecc('ninguna')">NINGUNA</button>
+        <button class="est-btn" onclick="estSelecc('precios')">SOLO IPC</button>
+        <button class="est-btn" onclick="estSelecc('default')">RESTABLECER</button>
+      </div>
+    </div>
+
     <div class="panel" style="margin-bottom:16px;">
       <div class="panel-header">
         <div class="panel-dot"></div>
@@ -1432,8 +1443,57 @@ const EST_COLORS = {
   'EMAE':                     '#00d4aa',
   'Empleo registrado (SIPA)': '#3b82f6',
   'Índice de salarios':       '#a78bfa',
+  'IPC Nivel general':        '#f43f5e',
 };
-const estColor = v => EST_COLORS[v] || '#7a8899';
+// Para las 12 divisiones del IPC, que no tienen color fijo
+const EST_PALETTE = ['#f59e0b','#34d399','#60a5fa','#fbbf24','#6ee7b7','#93c5fd',
+                     '#fb923c','#818cf8','#fde68a','#f9a8d4','#5eead4','#c4b5fd'];
+const _estColorCache = {};
+
+function estColor(v) {
+  if (EST_COLORS[v]) return EST_COLORS[v];
+  if (_estColorCache[v]) return _estColorCache[v];
+
+  // Asignación estable: por posición dentro de las variables sin color fijo
+  const sinColor = (ESTRUCTURAL ? ESTRUCTURAL.variables : []).filter(x => !EST_COLORS[x]);
+  const idx = sinColor.indexOf(v);
+  _estColorCache[v] = EST_PALETTE[(idx < 0 ? 0 : idx) % EST_PALETTE.length];
+  return _estColorCache[v];
+}
+
+// Orden de los grupos y variables tildadas al abrir la sección
+const EST_GRUPOS_ORDEN = ['actividad', 'empleo', 'precios'];
+const EST_DEFAULTS = ['IPC Nivel general', 'Índice de salarios', 'EMAE'];
+
+/** Devuelve [{grupo, variables:[...]}] ordenado: actividad, empleo, precios.
+ *  Dentro de precios, "IPC Nivel general" va primero y las divisiones alfabéticas.
+ */
+function estVariablesPorGrupo() {
+  if (!ESTRUCTURAL) return [];
+
+  const porGrupo = {};
+  ESTRUCTURAL.variables.forEach(v => {
+    const g = ESTRUCTURAL.porVariable[v].grupo || 'otros';
+    (porGrupo[g] = porGrupo[g] || []).push(v);
+  });
+
+  const grupos = Object.keys(porGrupo).sort((a, b) => {
+    const ia = EST_GRUPOS_ORDEN.indexOf(a), ib = EST_GRUPOS_ORDEN.indexOf(b);
+    if (ia !== ib) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    return a < b ? -1 : 1;
+  });
+
+  return grupos.map(g => ({
+    grupo: g,
+    variables: porGrupo[g].sort((a, b) => {
+      // El nivel general encabeza su grupo; el resto, alfabético
+      const na = /nivel general/i.test(a) ? 0 : 1;
+      const nb = /nivel general/i.test(b) ? 0 : 1;
+      if (na !== nb) return na - nb;
+      return a.localeCompare(b, 'es');
+    })
+  }));
+}
 
 /** "2023-12" -> "DIC-23" */
 function periodoCorto(p) {
@@ -1496,6 +1556,9 @@ function buildEstructural() {
   // --- Selector de variable (modo nominal) ---
   sel.innerHTML = vars.map(v => `<option value="${v}">${v}</option>`).join('');
 
+  // --- Checkboxes agrupados (modo base 100) ---
+  buildEstCheckboxes();
+
   // --- Pie de fuentes ---
   const fuentes = [...new Set(vars.map(v => ESTRUCTURAL.porVariable[v].fuente).filter(Boolean))];
   document.getElementById('estFuentes').textContent =
@@ -1504,12 +1567,53 @@ function buildEstructural() {
   updateEstChart();
 }
 
+/** Checkboxes agrupados por grupo, con el mismo patrón visual que los de Cruces. */
+function buildEstCheckboxes() {
+  const cont = document.getElementById('estCheckBoxes');
+  if (!cont) return;
+
+  const grupos = estVariablesPorGrupo();
+  cont.innerHTML = '';
+
+  grupos.forEach(g => {
+    const checks = g.variables.map(v => `
+      <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
+        <input type="checkbox" value="${v}" ${EST_DEFAULTS.includes(v) ? 'checked' : ''} onchange="updateEstChart()" style="accent-color:var(--accent); width:12px; height:12px;">
+        <span style="color:${estColor(v)};">${v}</span>
+      </label>
+    `).join('');
+
+    cont.innerHTML += `
+      <div style="margin-bottom:12px;">
+        <div style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); letter-spacing:0.12em; margin-bottom:6px; text-transform:uppercase;">${g.grupo}</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px 16px;">${checks}</div>
+      </div>
+    `;
+  });
+}
+
+/** Atajos de selección: ninguna / solo precios / volver al default. */
+function estSelecc(que) {
+  document.querySelectorAll('#estCheckBoxes input').forEach(inp => {
+    const v = inp.value;
+    if (que === 'ninguna')      inp.checked = false;
+    else if (que === 'precios') inp.checked = (ESTRUCTURAL?.porVariable[v]?.grupo === 'precios');
+    else                        inp.checked = EST_DEFAULTS.includes(v);
+  });
+  updateEstChart();
+}
+
+function estChecked() {
+  return [...document.querySelectorAll('#estCheckBoxes input:checked')].map(el => el.value);
+}
+
 function setEstModo(modo, el) {
   estModo = modo;
-  document.querySelectorAll('.est-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.est-btn[data-modo]').forEach(b => b.classList.remove('active'));
   if (el) el.classList.add('active');
-  // El selector de variable solo aplica al modo nominal
-  document.getElementById('estVarWrap').style.visibility = (modo === 'nominal') ? 'visible' : 'hidden';
+  // El selector de variable es del modo nominal; los checkboxes, del base 100
+  document.getElementById('estVarWrap').style.display   = (modo === 'nominal') ? '' : 'none';
+  document.getElementById('estCheckWrap').style.display = (modo === 'base100') ? '' : 'none';
   updateEstChart();
 }
 
@@ -1523,10 +1627,22 @@ function updateEstChart() {
   let series = [], colores = [], titulo = '', fmtY, fmtTip;
 
   if (estModo === 'base100') {
-    // Las 3 comparadas, indexadas a su primer período con dato
-    ESTRUCTURAL.variables.forEach(name => {
+    // Solo las variables tildadas, indexadas a su primer período con dato
+    const elegidas = estChecked();
+
+    if (!elegidas.length) {
+      document.getElementById('estChartTitle').textContent =
+        'Base 100 — elegí al menos una variable para comparar';
+      if (estChartInst) { estChartInst.destroy(); estChartInst = null; }
+      cont.innerHTML = '';
+      return;
+    }
+
+    elegidas.forEach(name => {
       const serie = ESTRUCTURAL.porVariable[name];
-      const mapa  = {};
+      if (!serie) return;
+
+      const mapa = {};
       serie.puntos.forEach(p => mapa[p.periodo] = p.valor);
 
       const base = serie.puntos.length ? serie.puntos[0].valor : null;
@@ -1540,7 +1656,8 @@ function updateEstChart() {
     });
 
     const primerPeriodo = periodos.length ? periodoCorto(periodos[0]) : '';
-    titulo = `Base 100 = ${primerPeriodo} · comparación de las 3 series`;
+    const n = series.length;
+    titulo = `Base 100 = ${primerPeriodo} · ${n} serie${n === 1 ? '' : 's'}`;
     fmtY   = v => v != null ? v.toFixed(0) : '';
     fmtTip = v => v != null ? v.toFixed(1) : '—';
 
