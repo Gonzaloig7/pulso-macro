@@ -240,6 +240,23 @@
   .var-select:focus, .var-select:hover { border-color: var(--accent); }
   option { background: #0e1116; }
 
+  /* Bloque colapsable del detalle del IPC */
+  .est-collapse {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.25s ease, opacity 0.25s ease;
+  }
+  /* La altura la fija toggleIpcDetalle() con scrollHeight: un max-height fijo
+     recorta la tabla en pantallas angostas, donde los rubros largos ocupan
+     dos líneas y pasa de 700px. */
+  .est-collapse.abierto { opacity: 1; }
+  .est-chevron {
+    display: inline-block;
+    transition: transform 0.2s ease;
+  }
+  .est-chevron.abierto { transform: rotate(90deg); }
+
   /* Toggle modo estructural — mismo look que .news-btn */
   .est-btn {
     font-family: var(--font-mono);
@@ -636,7 +653,17 @@
     <!-- Indicador derivado destacado: salario real -->
     <div id="estKpiDestacada" style="margin-bottom:16px;"></div>
 
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:24px;" id="estKpiGrid"></div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:12px;" id="estKpiGrid"></div>
+
+    <!-- Nivel 2: las 12 divisiones del IPC, plegadas por defecto -->
+    <div id="estIpcBloque" style="margin-bottom:24px;">
+      <button class="est-btn" id="estIpcToggle" onclick="toggleIpcDetalle()" style="width:100%; text-align:left; padding:10px 14px;">
+        <span class="est-chevron" id="estIpcChevron">▸</span>
+        Ver IPC por rubro
+        <span style="color:var(--text-muted); font-weight:400; letter-spacing:0.06em;" id="estIpcCount"></span>
+      </button>
+      <div class="est-collapse" id="estIpcDetalle"></div>
+    </div>
 
     <!-- Controles del gráfico -->
     <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:20px; align-items:flex-end;">
@@ -1550,6 +1577,18 @@ function estColor(v) {
   return _estColorCache[v];
 }
 
+// Nivel 2 de las KPI cards: el detalle del IPC.
+// No alcanza con grupo==='precios' ni con el prefijo "IPC ": ambos agarran 13,
+// porque IPC Nivel general comparte los dos con las 12 divisiones. Se excluye aparte.
+// Todo lo que no sea división del IPC queda en nivel 1, así una variable nueva
+// (ej: cantidad de empresas) aparece arriba y no escondida en el detalle.
+const IPC_GENERAL = 'IPC Nivel general';
+
+function esDivisionIPC(nombre) {
+  const s = ESTRUCTURAL?.porVariable?.[nombre];
+  return !!s && s.grupo === 'precios' && nombre !== IPC_GENERAL;
+}
+
 // Orden de los grupos y variables tildadas al abrir la sección
 const EST_GRUPOS_ORDEN = ['derivadas', 'actividad', 'empleo', 'precios'];
 // Solo series en escala comparable: salarios e IPC nominales se van a ~380 y
@@ -1622,12 +1661,14 @@ function buildEstructural() {
   // --- Indicador derivado destacado (salario real) ---
   buildSalarioRealCard();
 
-  // --- KPI cards: último valor + interanual destacada ---
-  // Las derivadas quedan afuera: tienen su propia card arriba.
+  // --- NIVEL 1: cards principales, siempre visibles ---
+  // Afuera quedan las derivadas (tienen su card destacada arriba) y las 12
+  // divisiones del IPC (van al bloque colapsable de abajo).
   grid.innerHTML = '';
   vars.forEach(name => {
     const serie = ESTRUCTURAL.porVariable[name];
     if (serie.grupo === 'derivadas') return;
+    if (esDivisionIPC(name)) return;
     const ult   = serie.ultimo;
     if (!ult) return;
 
@@ -1648,6 +1689,9 @@ function buildEstructural() {
       </div>
     `;
   });
+
+  // --- NIVEL 2: detalle del IPC en bloque colapsable ---
+  buildIpcDetalle();
 
   // --- Selector de variable (modo nominal) ---
   sel.innerHTML = vars.map(v => `<option value="${v}">${v}</option>`).join('');
@@ -1705,6 +1749,102 @@ function buildSalarioRealCard() {
       </div>
     </div>
   `;
+}
+
+/** Nivel 2: las 12 divisiones del IPC como mini-tabla, ordenadas por interanual
+ *  descendente (arriba lo que más subió). Mismo patrón que buildBrechaTable.
+ */
+let estIpcAbierto = false;
+
+function buildIpcDetalle() {
+  const cont  = document.getElementById('estIpcDetalle');
+  const count = document.getElementById('estIpcCount');
+  if (!cont) return;
+
+  const divisiones = (ESTRUCTURAL ? ESTRUCTURAL.variables : [])
+    .filter(esDivisionIPC)
+    .map(name => {
+      const serie = ESTRUCTURAL.porVariable[name];
+      return { name, serie, ult: serie.ultimo };
+    })
+    .filter(d => d.ult)
+    // Interanual desc; las que no tienen dato caen al final
+    .sort((a, b) => {
+      const ia = a.ult.var_interanual, ib = b.ult.var_interanual;
+      if (ia == null && ib == null) return 0;
+      if (ia == null) return 1;
+      if (ib == null) return -1;
+      return ib - ia;
+    });
+
+  if (count) count.textContent = divisiones.length ? `· ${divisiones.length} divisiones` : '';
+
+  if (!divisiones.length) {
+    cont.innerHTML = '';
+    document.getElementById('estIpcBloque').style.display = 'none';
+    return;
+  }
+
+  const th = 'text-align:right; color:var(--text-muted); font-size:9px; letter-spacing:0.1em; padding-bottom:10px; border-bottom:1px solid var(--border);';
+  const td = 'padding:9px 0; border-bottom:1px solid var(--border); text-align:right;';
+
+  let html = `
+    <div style="padding:14px 16px 4px; border:1px solid var(--border); border-top:none; border-radius:0 0 4px 4px; background:var(--bg-card);">
+      <table style="width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:12px;">
+      <thead><tr>
+        <th style="${th} text-align:left;">RUBRO</th>
+        <th style="${th}">ÍNDICE</th>
+        <th style="${th}">VAR. I.A.</th>
+      </tr></thead><tbody>
+  `;
+
+  divisiones.forEach(d => {
+    // Dentro del bloque, el prefijo "IPC " es redundante
+    const rubro   = d.name.replace(/^IPC\s+/, '');
+    const ia      = d.ult.var_interanual;
+    const tieneIa = ia != null;
+    const color   = tieneIa ? (ia >= 0 ? 'var(--accent)' : 'var(--red)') : 'var(--text-muted)';
+
+    html += `<tr>
+      <td style="${td} text-align:left; color:var(--text-secondary);">${rubro}</td>
+      <td style="${td} color:var(--text-primary);">${fmtEstValor(d.ult.valor)}</td>
+      <td style="${td} color:${color};">${tieneIa ? (ia >= 0 ? '▲ +' : '▼ ') + ia.toFixed(1) + '%' : '—'}</td>
+    </tr>`;
+  });
+
+  const per = divisiones[0].ult.periodo;
+  html += `</tbody></table>
+      <div style="font-family:var(--font-mono); font-size:9px; color:var(--text-muted); letter-spacing:0.06em; padding:10px 0 12px;">
+        Índice dic-2016 = 100 · ${periodoCorto(per)} · variación interanual
+      </div>
+    </div>`;
+
+  cont.innerHTML = html;
+  document.getElementById('estIpcBloque').style.display = '';
+}
+
+function toggleIpcDetalle() {
+  const det = document.getElementById('estIpcDetalle');
+  estIpcAbierto = !estIpcAbierto;
+
+  det.classList.toggle('abierto', estIpcAbierto);
+  document.getElementById('estIpcChevron').classList.toggle('abierto', estIpcAbierto);
+  document.getElementById('estIpcToggle').classList.toggle('active', estIpcAbierto);
+
+  if (estIpcAbierto) {
+    // Altura real, para que no se recorte si los rubros ocupan dos líneas
+    det.style.maxHeight = det.scrollHeight + 'px';
+    // Al terminar la animación se libera, así un resize no deja la tabla cortada
+    det.addEventListener('transitionend', function liberar(e) {
+      if (e.propertyName !== 'max-height') return;
+      if (estIpcAbierto) det.style.maxHeight = 'none';
+      det.removeEventListener('transitionend', liberar);
+    });
+  } else {
+    // Vuelve a una altura concreta antes de animar a 0: desde 'none' no transiciona
+    det.style.maxHeight = det.scrollHeight + 'px';
+    requestAnimationFrame(() => { det.style.maxHeight = '0px'; });
+  }
 }
 
 /** Checkboxes agrupados por grupo, con el mismo patrón visual que los de Cruces. */
