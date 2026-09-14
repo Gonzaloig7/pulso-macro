@@ -1552,7 +1552,9 @@ function estColor(v) {
 
 // Orden de los grupos y variables tildadas al abrir la sección
 const EST_GRUPOS_ORDEN = ['derivadas', 'actividad', 'empleo', 'precios'];
-const EST_DEFAULTS = ['Salario real', 'IPC Nivel general', 'Índice de salarios', 'EMAE'];
+// Solo series en escala comparable: salarios e IPC nominales se van a ~380 y
+// aplastan al salario real contra la línea de 100.
+const EST_DEFAULTS = ['Salario real', 'EMAE'];
 
 /** Devuelve [{grupo, variables:[...]}] ordenado: actividad, empleo, precios.
  *  Dentro de precios, "IPC Nivel general" va primero y las divisiones alfabéticas.
