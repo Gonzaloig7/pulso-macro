@@ -633,6 +633,9 @@
     <div class="section-label">Variables estructurales — mensuales desde dic-2023</div>
 
     <!-- KPIs: último valor + variación interanual -->
+    <!-- Indicador derivado destacado: salario real -->
+    <div id="estKpiDestacada" style="margin-bottom:16px;"></div>
+
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:24px;" id="estKpiGrid"></div>
 
     <!-- Controles del gráfico -->
@@ -863,11 +866,96 @@ function mapEstructural(rawRows) {
     v.ultimo = v.puntos[v.puntos.length - 1] || null;
   });
 
+  // Serie derivada: se calcula acá para que el gráfico y los checkboxes
+  // la traten igual que a cualquier otra variable.
+  const real = calcularSalarioReal_(porVariable);
+  if (real) porVariable[SALARIO_REAL] = real;
+
   return {
     variables:   Object.keys(porVariable).sort(),
     porVariable,
     periodos:    Object.keys(periodosSet).sort()
   };
+}
+
+// Nombres de las series que alimentan el cálculo, y de la derivada
+const SALARIO_REAL  = 'Salario real';
+const SERIE_SALARIO = 'Índice de salarios';
+const SERIE_IPC     = 'IPC Nivel general';
+const ANCLA_REAL    = '2023-12';
+
+/** Salario real = (Índice de salarios / IPC Nivel general), base 100 en dic-2023.
+ *  Solo se calcula en los meses donde existen AMBAS series: el IPC se publica
+ *  antes que los salarios, así que los últimos meses quedan sin punto.
+ *  Devuelve null si falta alguna de las dos series.
+ */
+function calcularSalarioReal_(porVariable) {
+  const sal = porVariable[SERIE_SALARIO];
+  const ipc = porVariable[SERIE_IPC];
+  if (!sal || !ipc) return null;
+
+  const mapaSal = {}, mapaIpc = {};
+  sal.puntos.forEach(p => mapaSal[p.periodo] = p.valor);
+  ipc.puntos.forEach(p => mapaIpc[p.periodo] = p.valor);
+
+  // Intersección: nunca se inventa un punto donde falta una de las dos
+  const comunes = Object.keys(mapaSal)
+    .filter(p => mapaIpc[p] != null && mapaIpc[p] !== 0)
+    .sort();
+
+  if (!comunes.length) return null;
+
+  // Ancla en dic-2023; si no estuviera, el primer mes común disponible
+  const anclaPeriodo = comunes.includes(ANCLA_REAL) ? ANCLA_REAL : comunes[0];
+  if (anclaPeriodo !== ANCLA_REAL) {
+    console.warn(`Salario real: sin dato en ${ANCLA_REAL}, se ancla en ${anclaPeriodo}`);
+  }
+
+  const base = mapaSal[anclaPeriodo] / mapaIpc[anclaPeriodo];
+  if (!isFinite(base) || base === 0) return null;
+
+  const puntos = comunes.map(periodo => ({
+    periodo,
+    fecha: '01/' + periodo.slice(5,7) + '/' + periodo.slice(0,4),
+    valor: Math.round((mapaSal[periodo] / mapaIpc[periodo]) / base * 100 * 100) / 100,
+    var_mensual: null,
+    var_interanual: null
+  }));
+
+  // Variaciones sobre la propia serie derivada, no heredadas de las de origen
+  const porPeriodo = {};
+  puntos.forEach(p => porPeriodo[p.periodo] = p.valor);
+
+  puntos.forEach(p => {
+    p.var_mensual    = varPctEst_(p.valor, porPeriodo[shiftPeriodoEst_(p.periodo, -1)]);
+    p.var_interanual = varPctEst_(p.valor, porPeriodo[shiftPeriodoEst_(p.periodo, -12)]);
+  });
+
+  return {
+    variable:   SALARIO_REAL,
+    grupo:      'derivadas',
+    unidad:     `Índice ${periodoCorto(anclaPeriodo)} = 100`,
+    fuente:     'Calculado sobre INDEC (salarios ÷ IPC)',
+    frecuencia: 'mensual',
+    derivada:   true,
+    ancla:      anclaPeriodo,
+    puntos,
+    ultimo:     puntos[puntos.length - 1] || null
+  };
+}
+
+/** "2024-03" desplazado n meses -> "2023-03" */
+function shiftPeriodoEst_(periodo, n) {
+  const a = Number(periodo.slice(0,4));
+  const m = Number(periodo.slice(5,7));
+  const total = a * 12 + (m - 1) + n;
+  const nm = (total % 12) + 1;
+  return Math.floor(total / 12) + '-' + (nm < 10 ? '0' + nm : String(nm));
+}
+
+function varPctEst_(actual, previo) {
+  if (previo == null || !isFinite(previo) || previo === 0) return null;
+  return Math.round(((actual / previo) - 1) * 10000) / 100;
 }
 
 // ====================================================
@@ -1444,6 +1532,7 @@ const EST_COLORS = {
   'Empleo registrado (SIPA)': '#3b82f6',
   'Índice de salarios':       '#a78bfa',
   'IPC Nivel general':        '#f43f5e',
+  'Salario real':             '#fbbf24',
 };
 // Para las 12 divisiones del IPC, que no tienen color fijo
 const EST_PALETTE = ['#f59e0b','#34d399','#60a5fa','#fbbf24','#6ee7b7','#93c5fd',
@@ -1462,8 +1551,8 @@ function estColor(v) {
 }
 
 // Orden de los grupos y variables tildadas al abrir la sección
-const EST_GRUPOS_ORDEN = ['actividad', 'empleo', 'precios'];
-const EST_DEFAULTS = ['IPC Nivel general', 'Índice de salarios', 'EMAE'];
+const EST_GRUPOS_ORDEN = ['derivadas', 'actividad', 'empleo', 'precios'];
+const EST_DEFAULTS = ['Salario real', 'IPC Nivel general', 'Índice de salarios', 'EMAE'];
 
 /** Devuelve [{grupo, variables:[...]}] ordenado: actividad, empleo, precios.
  *  Dentro de precios, "IPC Nivel general" va primero y las divisiones alfabéticas.
@@ -1528,10 +1617,15 @@ function buildEstructural() {
     return;
   }
 
+  // --- Indicador derivado destacado (salario real) ---
+  buildSalarioRealCard();
+
   // --- KPI cards: último valor + interanual destacada ---
+  // Las derivadas quedan afuera: tienen su propia card arriba.
   grid.innerHTML = '';
   vars.forEach(name => {
     const serie = ESTRUCTURAL.porVariable[name];
+    if (serie.grupo === 'derivadas') return;
     const ult   = serie.ultimo;
     if (!ult) return;
 
@@ -1565,6 +1659,50 @@ function buildEstructural() {
     fuentes.length ? 'Fuentes: ' + fuentes.join(' · ') : '';
 
   updateEstChart();
+}
+
+/** Card destacada del salario real: valor actual + variación desde el ancla.
+ *  Se distingue del grid de KPIs por ser un indicador derivado, no un dato de origen.
+ */
+function buildSalarioRealCard() {
+  const cont = document.getElementById('estKpiDestacada');
+  if (!cont) return;
+
+  const serie = ESTRUCTURAL?.porVariable?.[SALARIO_REAL];
+  const ult   = serie?.ultimo;
+
+  if (!ult) { cont.innerHTML = ''; return; }
+
+  // La serie ya está en base 100, así que el valor es el índice y el delta
+  // contra el ancla es simplemente valor - 100.
+  // El delta se calcula sobre el índice YA redondeado a 1 decimal. Si se resta
+  // antes de redondear, 118.85 - 100 da 18.849999... y la card mostraba
+  // "118,9" junto a "+18,8%".
+  const indice     = Math.round(ult.valor * 10) / 10;
+  const desdeAncla = Math.round((indice - 100) * 10) / 10;
+  const gano       = desdeAncla >= 0;
+  const color      = gano ? 'var(--accent)' : 'var(--red)';
+  const anclaTxt   = periodoCorto(serie.ancla || ANCLA_REAL);
+
+  cont.innerHTML = `
+    <div class="kpi-card" style="border-color:${color}; border-left-width:3px; background:var(--bg-card);">
+      <div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 20px;">
+        <div>
+          <div class="kpi-label" style="color:${color};">◆ Salario real · ${periodoCorto(ult.periodo)}</div>
+          <div style="display:flex; align-items:baseline; gap:14px; margin-top:2px;">
+            <div class="kpi-value" style="font-size:30px;">${indice.toLocaleString('es-AR', {minimumFractionDigits:1, maximumFractionDigits:1})}</div>
+            <div style="font-family:var(--font-mono); font-size:14px; font-weight:600; color:${color};">
+              ${gano ? '▲ +' : '▼ '}${desdeAncla.toLocaleString('es-AR', {minimumFractionDigits:1, maximumFractionDigits:1})}% desde ${anclaTxt}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="font-family:var(--font-mono); font-size:9px; color:var(--text-muted); letter-spacing:0.06em; margin-top:10px; line-height:1.6;">
+        Índice de salarios ÷ IPC Nivel general · Base 100 = dic-2023<br>
+        <span style="color:var(--text-secondary);">Sobre 100 = ganó poder adquisitivo · Bajo 100 = perdió</span>
+      </div>
+    </div>
+  `;
 }
 
 /** Checkboxes agrupados por grupo, con el mismo patrón visual que los de Cruces. */
