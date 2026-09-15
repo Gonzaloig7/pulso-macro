@@ -459,9 +459,8 @@
     </div>
     <nav style="display:flex; gap:24px;">
       <a href="#tablero" class="active" onclick="showSection('tablero',this)">Tablero</a>
-      <a href="#graficos" onclick="showSection('graficos',this)">Gráficos</a>
+      <a href="#coyuntura" onclick="showSection('coyuntura',this)">Coyuntura</a>
       <a href="#noticias" onclick="showSection('noticias',this)">Noticias</a>
-      <a href="#cruces" onclick="showSection('cruces',this)">Cruces</a>
       <a href="#estructural" onclick="showSection('estructural',this)">Estructural</a>
     </nav>
     <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-muted);" id="headerDate"></div>
@@ -518,71 +517,55 @@
     </div>
   </section>
 
-  <!-- =================== SECCIÓN GRÁFICOS =================== -->
-  <section id="s-graficos" style="display:none;" class="fade-in">
-    <div class="section-label">Gráficos históricos</div>
+  <!-- =================== SECCIÓN COYUNTURA (ex Gráficos + Cruces) =================== -->
+  <section id="s-coyuntura" style="display:none;" class="fade-in">
+    <div class="section-label">Coyuntura — series diarias de mercado</div>
 
-    <!-- Controls -->
-    <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:20px; align-items:center;">
+    <!-- Controles -->
+    <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; align-items:flex-end;">
       <div>
-        <div style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:4px; letter-spacing:0.1em;">EJE PRIMARIO</div>
-        <select class="var-select" id="varA">
-          <option value="dolar_mep">Dólar MEP</option>
-          <option value="dolar_ccl">Dólar CCL</option>
-          <option value="dolar_blue">Dólar Blue</option>
-          <option value="dolar_oficial">Dólar Oficial</option>
-          <option value="merval">Merval</option>
-          <option value="riesgo_pais">Riesgo País</option>
-          <option value="reservas">Reservas BCRA</option>
-          <option value="brecha">Brecha Cambiaria</option>
-          <option value="soja">Soja</option>
-          <option value="ypfd">YPF·D</option>
-        </select>
-      </div>
-      <div>
-        <div style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:4px; letter-spacing:0.1em;">EJE SECUNDARIO</div>
-        <select class="var-select" id="varB">
-          <option value="merval" selected>Merval</option>
-          <option value="dolar_mep">Dólar MEP</option>
-          <option value="dolar_ccl">Dólar CCL</option>
-          <option value="dolar_blue">Dólar Blue</option>
-          <option value="dolar_oficial">Dólar Oficial</option>
-          <option value="riesgo_pais">Riesgo País</option>
-          <option value="reservas">Reservas BCRA</option>
-          <option value="brecha">Brecha Cambiaria</option>
-          <option value="soja">Soja</option>
-          <option value="ypfd">YPF·D</option>
-        </select>
+        <div style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:4px; letter-spacing:0.1em;">MODO</div>
+        <div style="display:flex; gap:6px;">
+          <button class="est-btn active" data-anamodo="nominal" onclick="setAnaModo('nominal',this)">NOMINAL</button>
+          <button class="est-btn" data-anamodo="base100" onclick="setAnaModo('base100',this)">BASE 100</button>
+        </div>
       </div>
       <div>
         <div style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:4px; letter-spacing:0.1em;">PERÍODO</div>
-        <select class="var-select" id="periodoHist">
+        <select class="var-select" id="anaPeriodo" onchange="updateAnaChart()">
           <option value="30">30 días</option>
           <option value="60">60 días</option>
           <option value="90" selected>90 días</option>
-          <option value="180">6 meses</option>
-          <option value="365">1 año</option>
+          <option value="9999">Máx disponible</option>
         </select>
-      </div>
-      <div style="margin-top:16px;">
-        <label class="toggle-label">
-          <input type="checkbox" id="dualAxisToggle" checked>
-          <span class="toggle-track"><span class="toggle-thumb"></span></span>
-          Doble eje Y
-        </label>
-      </div>
-      <div style="margin-top:16px; margin-left:auto;">
-        <button onclick="updateHistChart()" style="background:var(--accent); color:#0a0c0f; border:none; font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:0.08em; padding:8px 16px; border-radius:3px; cursor:pointer;">ACTUALIZAR</button>
       </div>
     </div>
 
-    <div class="panel">
+    <!-- Selección múltiple -->
+    <div style="margin-bottom:16px;">
+      <div style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:8px; letter-spacing:0.1em;">VARIABLES A GRAFICAR</div>
+      <div id="anaCheckBoxes"></div>
+      <div style="display:flex; gap:6px; margin-top:10px;">
+        <button class="est-btn" onclick="anaSelecc('ninguna')">NINGUNA</button>
+        <button class="est-btn" onclick="anaSelecc('default')">RESTABLECER</button>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px;">
       <div class="panel-header">
         <div class="panel-dot"></div>
-        <span class="panel-title" id="histChartTitle">Dólar MEP vs Merval</span>
+        <span class="panel-title" id="anaChartTitle">Serie histórica</span>
       </div>
-      <div style="padding:8px;"><div id="histChart"></div></div>
+      <div style="padding:8px;"><div id="anaChart"></div></div>
+      <div style="padding:0 16px 12px; font-family:var(--font-mono); font-size:9px; color:var(--text-muted); letter-spacing:0.06em;" id="anaAviso"></div>
     </div>
+
+    <!-- Correlación: solo con exactamente 2 variables -->
+    <div id="anaCorrPanel"></div>
+
+    <!-- Cruces predefinidos -->
+    <div class="section-label">Cruces predefinidos</div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px;" id="crucesGrid"></div>
   </section>
 
   <!-- =================== SECCIÓN NOTICIAS =================== -->
@@ -614,35 +597,6 @@
         <div style="padding:16px; border-top:1px solid var(--border);" id="newsStats"></div>
       </div>
     </div>
-  </section>
-
-  <!-- =================== SECCIÓN CRUCES =================== -->
-  <section id="s-cruces" style="display:none;" class="fade-in">
-    <div class="section-label">Análisis comparativo — Base 100</div>
-
-    <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:20px; align-items:flex-end;">
-      <div>
-        <div style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:4px; letter-spacing:0.1em;">FECHA BASE (= 100)</div>
-        <input type="date" id="baseDate" value="">
-      </div>
-      <div>
-        <div style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:4px; letter-spacing:0.1em;">VARIABLES A COMPARAR</div>
-        <div style="display:flex; flex-wrap:wrap; gap:6px;" id="b100CheckBoxes"></div>
-      </div>
-      <button onclick="updateBase100Chart()" style="background:var(--accent); color:#0a0c0f; border:none; font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:0.08em; padding:8px 16px; border-radius:3px; cursor:pointer;">COMPARAR</button>
-    </div>
-
-    <div class="panel" style="margin-bottom:16px;">
-      <div class="panel-header">
-        <div class="panel-dot"></div>
-        <span class="panel-title">Rendimiento comparado en Base 100</span>
-      </div>
-      <div style="padding:8px;"><div id="base100Chart"></div></div>
-    </div>
-
-    <!-- Cruces predefinidos -->
-    <div class="section-label">Cruces predefinidos</div>
-    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px;" id="crucesGrid"></div>
   </section>
 
   <!-- =================== SECCIÓN ESTRUCTURAL =================== -->
@@ -777,10 +731,18 @@ const VAR_NAME_MAP = {
   'Riesgo país':    'riesgo_pais',
   'Riesgo País':    'riesgo_pais',
   'Merval':         'merval',
+  // Los nombres reales en SERIES_HIST llevan el ticker entre paréntesis
+  // ("Soja (ZS)", "Acción YPFD"). Sin estas entradas el fallback dejaba las
+  // claves crudas y las 5 variables quedaban invisibles para el frontend.
+  'Acción YPFD':    'ypfd',
   'YPFD':           'ypfd',
+  'Soja (ZS)':      'soja',
   'Soja':           'soja',
+  'Maíz (ZC)':      'maiz',
   'Maíz':           'maiz',
+  'Trigo (ZW)':     'trigo',
   'Trigo':          'trigo',
+  'S&P 500 (SPX)':  'sp500',
   'S&P 500':        'sp500',
   'Base monetaria': 'base_monetaria',
   'Tasa BCRA':      'tasa_bcra',
@@ -1111,10 +1073,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('headerDate').textContent =
     now.toLocaleDateString('es-AR', {weekday:'long', day:'2-digit', month:'long', year:'numeric'}).toUpperCase();
 
-  const d90 = new Date(TODAY);
-  d90.setDate(d90.getDate() - 90);
-  document.getElementById('baseDate').value = fmt(d90);
-
   // Arrancar carga de datos
   fetchAll();
 });
@@ -1131,26 +1089,10 @@ function initUI() {
   buildMiniChart();
   buildNewsDonut();
   renderNews('todos');
-  buildBase100Checkboxes();
+  buildAnaCheckboxes();
   buildCruces();
-  updateHistChart();
-  updateBase100Chart();
-  populateVarSelects();
+  updateAnaChart();
   buildEstructural();
-}
-
-// ====================================================
-//  POPULATE SELECTS con variables disponibles
-// ====================================================
-
-function populateVarSelects() {
-  const vars = availableVars();
-  if (!vars.length) return;
-  ['varA','varB'].forEach(id => {
-    const sel = document.getElementById(id);
-    const curr = sel.value;
-    sel.innerHTML = vars.map(v => `<option value="${v}" ${v===curr?'selected':''}>${LABELS[v]||v}</option>`).join('');
-  });
 }
 
 // ====================================================
@@ -1318,47 +1260,6 @@ function buildMiniChart() {
 }
 
 // ====================================================
-//  HIST CHART
-// ====================================================
-
-let histChartInst = null;
-function updateHistChart() {
-  if (!HISTORICO.length) return;
-  const keyA = document.getElementById('varA').value;
-  const keyB = document.getElementById('varB').value;
-  const dias  = parseInt(document.getElementById('periodoHist').value);
-  const dual  = document.getElementById('dualAxisToggle').checked;
-
-  const slice = HISTORICO.slice(-dias);
-  const dates = slice.map(r => r.fecha);
-  document.getElementById('histChartTitle').textContent = `${LABELS[keyA]||keyA} vs ${LABELS[keyB]||keyB}`;
-
-  const [preA] = getPrefixSuffix(keyA);
-  const [preB] = getPrefixSuffix(keyB);
-
-  if (histChartInst) { histChartInst.destroy(); }
-  histChartInst = new ApexCharts(document.getElementById('histChart'), {
-    chart: { type:'line', height:340, background:'transparent', toolbar:{show:true, tools:{download:true, zoom:true, reset:true}}, animations:{enabled:false} },
-    theme: { mode:'dark' },
-    series: [
-      { name: LABELS[keyA]||keyA, data: slice.map(r => r[keyA] ?? null) },
-      { name: LABELS[keyB]||keyB, data: slice.map(r => r[keyB] ?? null) },
-    ],
-    xaxis: { categories: dates, labels:{style:{fontFamily:'IBM Plex Mono',fontSize:'9px',colors:'#7a8899'}, rotate:-30}, axisBorder:{color:'#1e2530'}, axisTicks:{color:'#1e2530'}, tickAmount:8 },
-    yaxis: dual ? [
-      { seriesName: LABELS[keyA]||keyA, labels:{formatter:v=>preA+Math.round(v).toLocaleString('es-AR'), style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}}, axisBorder:{show:false} },
-      { seriesName: LABELS[keyB]||keyB, opposite: true, labels:{formatter:v=>preB+Math.round(v).toLocaleString('es-AR'), style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}}, axisBorder:{show:false} }
-    ] : { labels:{style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}}, axisBorder:{show:false} },
-    colors: [COLORS[keyA]||'#00d4aa', COLORS[keyB]||'#3b82f6'],
-    stroke: { width:[2,2], curve:'smooth' },
-    grid: { borderColor:'#1e2530', strokeDashArray:3 },
-    legend: { fontFamily:'IBM Plex Mono', fontSize:'10px', labels:{colors:'#7a8899'} },
-    tooltip: { x:{format:'dd/MM/yy'}, shared:true, intersect:false },
-  });
-  histChartInst.render();
-}
-
-// ====================================================
 //  NOTICIAS
 // ====================================================
 
@@ -1423,60 +1324,232 @@ function buildNewsDonut() {
 }
 
 // ====================================================
-//  BASE 100
+//  COYUNTURA — selección múltiple + nominal / base 100
+//  (fusión de las viejas secciones Gráficos y Cruces)
+//  DEUDA: estos helpers son casi gemelos de los de Estructural, pero leen
+//  HISTORICO (filas por fecha) en vez de ESTRUCTURAL (objetos por variable).
+//  Unificarlos en un motor genérico queda pendiente.
 // ====================================================
 
-let base100Inst = null;
+let anaChartInst = null;
+let anaModo = 'nominal';
 
-function buildBase100Checkboxes() {
-  const vars = availableVars();
-  const defaults = ['dolar_oficial','dolar_mep','dolar_ccl','merval','riesgo_pais','reservas','soja'];
-  const container = document.getElementById('b100CheckBoxes');
-  container.innerHTML = '';
-  (vars.length ? vars : defaults).slice(0,8).forEach((v, i) => {
-    container.innerHTML += `
+const ANA_GRUPOS = [
+  { grupo: 'dólar',         vars: ['dolar_oficial','dolar_blue','dolar_mep','dolar_ccl'] },
+  { grupo: 'brecha',        vars: ['brecha'] },
+  { grupo: 'riesgo país',   vars: ['riesgo_pais'] },
+  { grupo: 'acciones',      vars: ['merval','ypfd'] },
+  { grupo: 'commodities',   vars: ['soja','maiz','trigo'] },
+  { grupo: 'reservas',      vars: ['reservas'] },
+  { grupo: 'internacional', vars: ['sp500'] },
+];
+
+const ANA_DEFAULTS = ['dolar_mep', 'merval'];
+
+// Si las medianas de dos series difieren por este factor, no comparten eje
+const ANA_RATIO_ESCALA = 10;
+
+/** Checkboxes agrupados por tema, mismo patrón visual que los de Estructural.
+ *  Solo se listan las variables que realmente tienen dato en HISTORICO.
+ */
+function buildAnaCheckboxes() {
+  const cont = document.getElementById('anaCheckBoxes');
+  if (!cont) return;
+
+  const disponibles = availableVars();
+  cont.innerHTML = '';
+
+  ANA_GRUPOS.forEach(g => {
+    const vars = g.vars.filter(v => disponibles.includes(v));
+    if (!vars.length) return;   // grupo sin datos: no se dibuja
+
+    const checks = vars.map(v => `
       <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
-        <input type="checkbox" value="${v}" ${i<4?'checked':''} style="accent-color:var(--accent); width:12px; height:12px;">
+        <input type="checkbox" value="${v}" ${ANA_DEFAULTS.includes(v) ? 'checked' : ''} onchange="updateAnaChart()" style="accent-color:var(--accent); width:12px; height:12px;">
         <span style="color:${COLORS[v]||'var(--text-secondary)'};">${LABELS[v]||v}</span>
       </label>
+    `).join('');
+
+    cont.innerHTML += `
+      <div style="margin-bottom:12px;">
+        <div style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); letter-spacing:0.12em; margin-bottom:6px; text-transform:uppercase;">${g.grupo}</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px 16px;">${checks}</div>
+      </div>
     `;
   });
 }
 
-function updateBase100Chart() {
-  if (!HISTORICO.length) return;
-  const baseVal = document.getElementById('baseDate').value;
-  const checked = [...document.querySelectorAll('#b100CheckBoxes input:checked')].map(el=>el.value);
-  if (!checked.length) return;
+function anaChecked() {
+  return [...document.querySelectorAll('#anaCheckBoxes input:checked')].map(el => el.value);
+}
 
-  const baseIdx = HISTORICO.findIndex(r => r.fecha >= baseVal);
-  const idx = baseIdx === -1 ? 0 : baseIdx;
-  const sliced = HISTORICO.slice(idx);
-  const dates = sliced.map(r => r.fecha);
+function anaSelecc(que) {
+  document.querySelectorAll('#anaCheckBoxes input').forEach(inp => {
+    inp.checked = (que === 'ninguna') ? false : ANA_DEFAULTS.includes(inp.value);
+  });
+  updateAnaChart();
+}
 
-  const series = checked
-    .filter(k => sliced[0]?.[k] != null)
-    .map(k => ({
-      name: LABELS[k]||k,
-      data: sliced.map(r => r[k] != null ? Math.round(r[k] / sliced[0][k] * 100 * 100) / 100 : null)
-    }));
+function setAnaModo(modo, el) {
+  anaModo = modo;
+  document.querySelectorAll('.est-btn[data-anamodo]').forEach(b => b.classList.remove('active'));
+  if (el) el.classList.add('active');
+  updateAnaChart();
+}
 
-  if (!series.length) return;
-  if (base100Inst) base100Inst.destroy();
-  base100Inst = new ApexCharts(document.getElementById('base100Chart'), {
-    chart: { type:'line', height:340, background:'transparent', toolbar:{show:true}, animations:{enabled:false} },
+/** Mediana de los valores no nulos de una clave dentro del tramo. */
+function anaMediana_(slice, key) {
+  const a = slice.map(r => r[key]).filter(v => v != null && isFinite(v)).sort((x,y) => x-y);
+  return a.length ? Math.abs(a[Math.floor(a.length/2)]) : null;
+}
+
+/** Correlación de Pearson entre dos arrays alineados. Devuelve null si no alcanza. */
+function correlacion_(xs, ys) {
+  const n = Math.min(xs.length, ys.length);
+  if (n <= 5) return null;
+
+  const x = xs.slice(-n), y = ys.slice(-n);
+  const mx = x.reduce((s,v)=>s+v,0)/n;
+  const my = y.reduce((s,v)=>s+v,0)/n;
+  const num = x.reduce((s,v,i)=>s+(v-mx)*(y[i]-my),0);
+  const den = Math.sqrt(x.reduce((s,v)=>s+(v-mx)**2,0) * y.reduce((s,v)=>s+(v-my)**2,0));
+
+  return den ? num/den : null;
+}
+
+function updateAnaChart() {
+  const cont = document.getElementById('anaChart');
+  if (!cont || !HISTORICO.length) return;
+
+  const elegidas = anaChecked();
+  const dias  = parseInt(document.getElementById('anaPeriodo').value, 10);
+  const slice = HISTORICO.slice(-dias);
+  const dates = slice.map(r => r.fecha);
+
+  const titulo = document.getElementById('anaChartTitle');
+  const aviso  = document.getElementById('anaAviso');
+
+  if (!elegidas.length) {
+    titulo.textContent = 'Elegí al menos una variable para graficar';
+    aviso.textContent = '';
+    if (anaChartInst) { anaChartInst.destroy(); anaChartInst = null; }
+    cont.innerHTML = '';
+    buildAnaCorrelacion();
+    return;
+  }
+
+  const nombres = elegidas.map(k => LABELS[k] || k);
+  const colores = elegidas.map(k => COLORS[k] || '#7a8899');
+
+  // Escalas: se usan para decidir doble eje y para avisar cuando conviene base 100
+  const medianas = elegidas.map(k => anaMediana_(slice, k)).filter(v => v != null && v !== 0);
+  const ratio = medianas.length > 1 ? Math.max(...medianas) / Math.min(...medianas) : 1;
+
+  let series, yaxis, fmtTip;
+
+  if (anaModo === 'base100') {
+    // Todas contra el primer valor disponible del tramo
+    series = elegidas.map(k => {
+      const base = slice.map(r => r[k]).find(v => v != null && v !== 0);
+      return {
+        name: LABELS[k] || k,
+        data: slice.map(r => (r[k] != null && base) ? Math.round(r[k]/base * 10000)/100 : null)
+      };
+    });
+    yaxis  = { labels:{formatter:v => v != null ? v.toFixed(0) : '', style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}}, axisBorder:{show:false} };
+    fmtTip = v => v != null ? v.toFixed(2) : '—';
+    titulo.textContent = `Base 100 · ${elegidas.length} serie${elegidas.length===1?'':'s'} · ${dates[0]||''} → ${dates[dates.length-1]||''}`;
+    aviso.textContent = '';
+
+  } else {
+    series = elegidas.map(k => ({ name: LABELS[k] || k, data: slice.map(r => r[k] ?? null) }));
+
+    // Doble eje solo con exactamente 2 y escalas muy distintas
+    const dual = elegidas.length === 2 && ratio >= ANA_RATIO_ESCALA;
+
+    if (dual) {
+      const [preA] = getPrefixSuffix(elegidas[0]);
+      const [preB] = getPrefixSuffix(elegidas[1]);
+      yaxis = [
+        { seriesName: nombres[0], labels:{formatter:v=>preA+Math.round(v).toLocaleString('es-AR'), style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}}, axisBorder:{show:false} },
+        { seriesName: nombres[1], opposite:true, labels:{formatter:v=>preB+Math.round(v).toLocaleString('es-AR'), style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}}, axisBorder:{show:false} }
+      ];
+    } else {
+      yaxis = { labels:{style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}}, axisBorder:{show:false} };
+    }
+
+    fmtTip = v => v != null ? v.toLocaleString('es-AR', {maximumFractionDigits:2}) : '—';
+    titulo.textContent = nombres.join(' · ') + (dual ? ' — doble eje' : '');
+
+    // Aviso discreto cuando conviven escalas dispares sin doble eje posible
+    aviso.textContent = (elegidas.length > 2 && ratio >= ANA_RATIO_ESCALA)
+      ? 'Las series están en escalas muy distintas — el modo BASE 100 las hace comparables.'
+      : '';
+  }
+
+  if (anaChartInst) anaChartInst.destroy();
+  anaChartInst = new ApexCharts(cont, {
+    chart: { type:'line', height:360, background:'transparent', toolbar:{show:true, tools:{download:true, zoom:true, reset:true}}, animations:{enabled:false} },
     theme: { mode:'dark' },
     series,
     xaxis: { categories: dates, labels:{style:{fontFamily:'IBM Plex Mono',fontSize:'9px',colors:'#7a8899'}, rotate:-30}, axisBorder:{color:'#1e2530'}, axisTicks:{color:'#1e2530'}, tickAmount:10 },
-    yaxis: { labels:{formatter:v=>v.toFixed(1), style:{fontFamily:'IBM Plex Mono',fontSize:'10px',colors:'#7a8899'}}, axisBorder:{show:false} },
-    colors: checked.map(k => COLORS[k]||'#999'),
+    yaxis,
+    colors: colores,
     stroke: { width:2, curve:'smooth' },
+    markers: { size:0, hover:{size:4} },
     grid: { borderColor:'#1e2530', strokeDashArray:3 },
-    annotations: { yaxis:[{ y:100, borderColor:'#3d4d5f', strokeDashArray:4, label:{text:'BASE 100', style:{fontFamily:'IBM Plex Mono', fontSize:'9px', color:'#7a8899', background:'transparent'}} }] },
-    legend: { fontFamily:'IBM Plex Mono', fontSize:'10px', labels:{colors:'#7a8899'} },
-    tooltip: { x:{format:'dd/MM/yy'}, shared:true, intersect:false, y:{formatter:v=>v != null ? v.toFixed(2) : '—'} },
+    annotations: anaModo === 'base100'
+      ? { yaxis:[{ y:100, borderColor:'#3d4d5f', strokeDashArray:4, label:{text:'BASE 100', style:{fontFamily:'IBM Plex Mono', fontSize:'9px', color:'#7a8899', background:'transparent'}} }] }
+      : {},
+    legend: { show: elegidas.length > 1, fontFamily:'IBM Plex Mono', fontSize:'10px', labels:{colors:'#7a8899'} },
+    tooltip: { shared:true, intersect:false, y:{formatter:fmtTip} },
   });
-  base100Inst.render();
+  anaChartInst.render();
+
+  buildAnaCorrelacion();
+}
+
+/** Panel de correlación: solo con exactamente 2 tildadas, sobre el período elegido. */
+function buildAnaCorrelacion() {
+  const panel = document.getElementById('anaCorrPanel');
+  if (!panel) return;
+
+  const elegidas = anaChecked();
+  if (elegidas.length !== 2) { panel.innerHTML = ''; return; }
+
+  const dias  = parseInt(document.getElementById('anaPeriodo').value, 10);
+  const slice = HISTORICO.slice(-dias);
+  const [a, b] = elegidas;
+
+  // Solo fechas donde las dos tienen dato, para no desalinear las series
+  const pares = slice.filter(r => r[a] != null && r[b] != null);
+  const r = correlacion_(pares.map(x => x[a]), pares.map(x => x[b]));
+
+  if (r == null) {
+    panel.innerHTML = `
+      <div class="panel" style="margin-bottom:16px; padding:14px 16px; font-family:var(--font-mono); font-size:11px; color:var(--text-muted);">
+        Correlación: sin datos suficientes en el período.
+      </div>`;
+    return;
+  }
+
+  const color = Math.abs(r) > 0.7 ? (r > 0 ? 'var(--accent)' : 'var(--red)') : 'var(--gold)';
+  const lectura = Math.abs(r) > 0.7
+    ? (r > 0 ? '↑ Correlación positiva fuerte' : '↓ Correlación inversa fuerte')
+    : (Math.abs(r) > 0.4 ? '→ Correlación moderada' : '→ Correlación débil');
+
+  panel.innerHTML = `
+    <div class="panel" style="margin-bottom:16px; padding:14px 16px;">
+      <div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px 18px;">
+        <span style="font-size:9px; color:var(--text-muted); font-family:var(--font-mono); letter-spacing:0.1em;">CORRELACIÓN · ${pares.length} DÍAS</span>
+        <span style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
+          ${LABELS[a]||a} <span style="color:var(--text-muted);">↔</span> ${LABELS[b]||b}
+        </span>
+        <span style="font-family:var(--font-mono); font-size:18px; font-weight:600; color:${color};">${r.toFixed(2)}</span>
+        <span style="font-family:var(--font-mono); font-size:10px; color:var(--text-muted);">${lectura}</span>
+      </div>
+    </div>
+  `;
 }
 
 // ====================================================
@@ -1501,27 +1574,16 @@ function buildCruces() {
   if (!slice.length) return;
 
   CRUCES.forEach(c => {
-    const xs = slice.map(r=>r[c.a]).filter(v=>v!=null);
-    const ys = slice.map(r=>r[c.b]).filter(v=>v!=null);
-    let corr = '—';
-    let corrColor = 'var(--text-muted)';
-    if (xs.length > 5 && ys.length > 5) {
-      const n = Math.min(xs.length, ys.length);
-      const xS = xs.slice(-n), yS = ys.slice(-n);
-      const mx = xS.reduce((s,v)=>s+v,0)/n;
-      const my = yS.reduce((s,v)=>s+v,0)/n;
-      const num = xS.reduce((s,v,i)=>s+(v-mx)*(yS[i]-my),0);
-      const den = Math.sqrt(xS.reduce((s,v)=>s+(v-mx)**2,0)*yS.reduce((s,v)=>s+(v-my)**2,0));
-      if (den) {
-        const r = num/den;
-        corr = r.toFixed(2);
-        corrColor = Math.abs(r) > 0.7 ? (r > 0 ? 'var(--accent)' : 'var(--red)') : 'var(--gold)';
-      }
-    }
-    const corrNum = parseFloat(corr);
-    const corrLabel = isNaN(corrNum) ? '→ Sin datos suficientes' :
-      Math.abs(corrNum) > 0.7 ? (corrNum > 0 ? '↑ Correlación positiva fuerte' : '↓ Correlación inversa fuerte') :
-      '→ Correlación débil/moderada';
+    // Solo fechas donde las dos tienen dato, para no desalinear las series
+    const pares = slice.filter(r => r[c.a] != null && r[c.b] != null);
+    const r = correlacion_(pares.map(x => x[c.a]), pares.map(x => x[c.b]));
+
+    const corr      = r == null ? '—' : r.toFixed(2);
+    const corrColor = r == null ? 'var(--text-muted)'
+                    : (Math.abs(r) > 0.7 ? (r > 0 ? 'var(--accent)' : 'var(--red)') : 'var(--gold)');
+    const corrLabel = r == null ? '→ Sin datos suficientes'
+                    : (Math.abs(r) > 0.7 ? (r > 0 ? '↑ Correlación positiva fuerte' : '↓ Correlación inversa fuerte')
+                    : '→ Correlación débil/moderada');
 
     grid.innerHTML += `
       <div class="kpi-card" style="cursor:pointer;" onclick="quickCruce('${c.a}','${c.b}')">
@@ -1539,11 +1601,13 @@ function buildCruces() {
   });
 }
 
+/** Atajo: tilda exactamente las dos variables del cruce y sube al gráfico. */
 function quickCruce(a, b) {
-  document.getElementById('varA').value = a;
-  document.getElementById('varB').value = b;
-  showSection('graficos', document.querySelector('nav a[onclick*="graficos"]'));
-  setTimeout(updateHistChart, 100);
+  document.querySelectorAll('#anaCheckBoxes input').forEach(inp => {
+    inp.checked = (inp.value === a || inp.value === b);
+  });
+  updateAnaChart();
+  document.getElementById('anaChart')?.scrollIntoView({ behavior:'smooth', block:'center' });
 }
 
 // ====================================================
@@ -1985,7 +2049,7 @@ function updateEstChart() {
 // ====================================================
 
 function showSection(id, el) {
-  ['tablero','graficos','noticias','cruces','estructural'].forEach(s => {
+  ['tablero','coyuntura','noticias','estructural'].forEach(s => {
     const sec = document.getElementById('s-'+s);
     if (sec) sec.style.display = s===id ? '' : 'none';
   });
@@ -1993,8 +2057,9 @@ function showSection(id, el) {
   if (el) el.classList.add('active');
 
   // ApexCharts mide mal el ancho si se renderiza con la sección oculta:
-  // al mostrar Estructural, redibujamos con el contenedor ya visible.
+  // al mostrarlas, redibujamos con el contenedor ya visible.
   if (id === 'estructural') setTimeout(updateEstChart, 50);
+  if (id === 'coyuntura')   setTimeout(updateAnaChart, 50);
 }
 </script>
 
