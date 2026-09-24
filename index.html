@@ -824,7 +824,94 @@ function toN(v) {
 //                frecuencia, fuente }
 // ====================================================
 
-function mapEstructural(rawRows) {
+/** Acepta los DOS formatos del endpoint:
+ *   - columnar (objeto {periodos, series}): el actual, ~35 KB
+ *   - array de filas: el viejo, ~320 KB
+ *  El doble soporte cubre la ventana en que alguien tiene el index.html cacheado
+ *  en el navegador mientras el Web App ya sirve el formato nuevo, o al revés.
+ *  El contrato de salida es idéntico en los dos casos.
+ */
+function mapEstructural(raw) {
+  const parsed = Array.isArray(raw)
+    ? parseEstructuralFilas_(raw)
+    : parseEstructuralColumnar_(raw);
+
+  const porVariable = parsed.porVariable;
+  const periodosSet = parsed.periodosSet;
+
+  // Orden cronológico dentro de cada variable (el endpoint ya viene ordenado,
+  // pero no dependemos de eso)
+  Object.values(porVariable).forEach(v => {
+    v.puntos.sort((a,b) => a.periodo < b.periodo ? -1 : a.periodo > b.periodo ? 1 : 0);
+    v.ultimo = v.puntos[v.puntos.length - 1] || null;
+  });
+
+  // Serie derivada: se calcula acá para que el gráfico y los checkboxes
+  // la traten igual que a cualquier otra variable.
+  const real = calcularSalarioReal_(porVariable);
+  if (real) porVariable[SALARIO_REAL] = real;
+
+  return {
+    variables:   Object.keys(porVariable).sort(),
+    porVariable,
+    periodos:    Object.keys(periodosSet).sort()
+  };
+}
+
+/** Formato columnar: los metadatos viajan una vez por serie y los datos vienen
+ *  indexados contra el array de períodos.
+ *    { periodos:["2023-12",…],
+ *      series:[ {v,g,u,f,fr, d:[[periodoIdx, valor, varMensual, varInteranual],…]} ] }
+ *  `fecha` no viaja: siempre es el día 1 del período, así que se deriva acá.
+ */
+function parseEstructuralColumnar_(raw) {
+  const porVariable = {};
+  const periodosSet = {};
+
+  const periodos = (raw && Array.isArray(raw.periodos)) ? raw.periodos : [];
+  const series   = (raw && Array.isArray(raw.series))   ? raw.series   : [];
+
+  series.forEach(s => {
+    const variable = String(s.v || '').trim();
+    if (!variable) return;
+
+    const puntos = [];
+
+    (s.d || []).forEach(t => {
+      const periodo = periodos[t[0]];
+      if (!periodo || !/^\d{4}-\d{2}$/.test(periodo)) return;
+
+      const valor = toN(t[1]);
+      if (valor == null) return;
+
+      puntos.push({
+        periodo,
+        fecha: '01/' + periodo.slice(5,7) + '/' + periodo.slice(0,4),
+        valor,
+        var_mensual:    toN(t[2]),
+        var_interanual: toN(t[3])
+      });
+
+      periodosSet[periodo] = true;
+    });
+
+    if (!puntos.length) return;
+
+    porVariable[variable] = {
+      variable,
+      grupo:      s.g  || '',
+      unidad:     s.u  || '',
+      fuente:     s.f  || '',
+      frecuencia: s.fr || '',
+      puntos
+    };
+  });
+
+  return { porVariable, periodosSet };
+}
+
+/** Formato viejo: una fila por (variable, período) con todos los metadatos repetidos. */
+function parseEstructuralFilas_(rawRows) {
   const porVariable = {};
   const periodosSet = {};
 
@@ -858,23 +945,7 @@ function mapEstructural(rawRows) {
     periodosSet[periodo] = true;
   });
 
-  // Orden cronológico dentro de cada variable (el endpoint ya viene ordenado,
-  // pero no dependemos de eso)
-  Object.values(porVariable).forEach(v => {
-    v.puntos.sort((a,b) => a.periodo < b.periodo ? -1 : a.periodo > b.periodo ? 1 : 0);
-    v.ultimo = v.puntos[v.puntos.length - 1] || null;
-  });
-
-  // Serie derivada: se calcula acá para que el gráfico y los checkboxes
-  // la traten igual que a cualquier otra variable.
-  const real = calcularSalarioReal_(porVariable);
-  if (real) porVariable[SALARIO_REAL] = real;
-
-  return {
-    variables:   Object.keys(porVariable).sort(),
-    porVariable,
-    periodos:    Object.keys(periodosSet).sort()
-  };
+  return { porVariable, periodosSet };
 }
 
 // Nombres de las series que alimentan el cálculo, y de la derivada
@@ -978,7 +1049,8 @@ async function fetchAll() {
     TABLERO     = mapTablero(resTablero);
     HISTORICO   = normalizeSeries(Array.isArray(resGraficos) ? resGraficos : []);
     NEWS_HIST   = mapNoticias(Array.isArray(resNoticias) ? resNoticias : []);
-    ESTRUCTURAL = mapEstructural(Array.isArray(resEstructural) ? resEstructural : []);
+    // Acepta el objeto columnar o el array viejo; cualquier otra cosa, vacío.
+    ESTRUCTURAL = mapEstructural(resEstructural && typeof resEstructural === 'object' ? resEstructural : []);
     API_READY = true;
 
     showLoadingState(false);
