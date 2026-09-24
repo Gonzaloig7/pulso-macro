@@ -247,7 +247,7 @@
     overflow: hidden;
     transition: max-height 0.25s ease, opacity 0.25s ease;
   }
-  /* La altura la fija toggleIpcDetalle() con scrollHeight: un max-height fijo
+  /* La altura la fija toggleColapsable_() con scrollHeight: un max-height fijo
      recorta la tabla en pantallas angostas, donde los rubros largos ocupan
      dos líneas y pasa de 700px. */
   .est-collapse.abierto { opacity: 1; }
@@ -609,14 +609,24 @@
 
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:12px;" id="estKpiGrid"></div>
 
-    <!-- Nivel 2: las 12 divisiones del IPC, plegadas por defecto -->
-    <div id="estIpcBloque" style="margin-bottom:24px;">
-      <button class="est-btn" id="estIpcToggle" onclick="toggleIpcDetalle()" style="width:100%; text-align:left; padding:10px 14px;">
+    <!-- Nivel 2: detalle del IPC, plegado por defecto -->
+    <div id="estIpcBloque" style="margin-bottom:8px;">
+      <button class="est-btn" id="estIpcToggle" onclick="toggleColapsable_('ipc')" style="width:100%; text-align:left; padding:10px 14px;">
         <span class="est-chevron" id="estIpcChevron">▸</span>
         Ver IPC por rubro
         <span style="color:var(--text-muted); font-weight:400; letter-spacing:0.06em;" id="estIpcCount"></span>
       </button>
       <div class="est-collapse" id="estIpcDetalle"></div>
+    </div>
+
+    <!-- Nivel 2: detalle del EMAE, plegado por defecto -->
+    <div id="estEmaeBloque" style="margin-bottom:24px;">
+      <button class="est-btn" id="estEmaeToggle" onclick="toggleColapsable_('emae')" style="width:100%; text-align:left; padding:10px 14px;">
+        <span class="est-chevron" id="estEmaeChevron">▸</span>
+        Ver EMAE por sector
+        <span style="color:var(--text-muted); font-weight:400; letter-spacing:0.06em;" id="estEmaeCount"></span>
+      </button>
+      <div class="est-collapse" id="estEmaeDetalle"></div>
     </div>
 
     <!-- Controles del gráfico -->
@@ -1646,12 +1656,49 @@ function estColor(v) {
 // porque IPC Nivel general comparte los dos con las 12 divisiones. Se excluye aparte.
 // Todo lo que no sea división del IPC queda en nivel 1, así una variable nueva
 // (ej: cantidad de empresas) aparece arriba y no escondida en el detalle.
-const IPC_GENERAL = 'IPC Nivel general';
+const IPC_GENERAL  = 'IPC Nivel general';
+const EMAE_GENERAL = 'EMAE';
 
 function esDivisionIPC(nombre) {
   const s = ESTRUCTURAL?.porVariable?.[nombre];
   return !!s && s.grupo === 'precios' && nombre !== IPC_GENERAL;
 }
+
+/** Sector del EMAE: grupo "actividad" y prefijo "EMAE " (con espacio, así el
+ *  nivel general — que se llama "EMAE" a secas — nunca entra). La comparación
+ *  explícita con EMAE_GENERAL queda por si algún día se lo renombra.
+ */
+function esSectorEMAE(nombre) {
+  const s = ESTRUCTURAL?.porVariable?.[nombre];
+  return !!s && s.grupo === 'actividad'
+             && nombre.startsWith('EMAE ')
+             && nombre !== EMAE_GENERAL;
+}
+
+/** Configuración de los bloques colapsables de detalle.
+ *  Cada entrada describe un nivel 2: qué variables agrupa y cómo se rotula.
+ *  El markup usa los ids `${idBase}Bloque|Toggle|Chevron|Count|Detalle`.
+ */
+const DETALLES = {
+  ipc: {
+    idBase:   'estIpc',
+    filtro:   esDivisionIPC,
+    prefijo:  /^IPC\s+/,
+    colRubro: 'RUBRO',
+    colValor: 'ÍNDICE',
+    unidad:   'Índice dic-2016 = 100',
+    plural:   'divisiones'
+  },
+  emae: {
+    idBase:   'estEmae',
+    filtro:   esSectorEMAE,
+    prefijo:  /^EMAE\s+/,
+    colRubro: 'SECTOR',
+    colValor: 'ÍNDICE',
+    unidad:   'Índice 2004 = 100',
+    plural:   'sectores'
+  }
+};
 
 // Orden de los grupos y variables tildadas al abrir la sección
 const EST_GRUPOS_ORDEN = ['derivadas', 'actividad', 'empleo', 'precios'];
@@ -1733,6 +1780,7 @@ function buildEstructural() {
     const serie = ESTRUCTURAL.porVariable[name];
     if (serie.grupo === 'derivadas') return;
     if (esDivisionIPC(name)) return;
+    if (esSectorEMAE(name)) return;
     const ult   = serie.ultimo;
     if (!ult) return;
 
@@ -1754,8 +1802,9 @@ function buildEstructural() {
     `;
   });
 
-  // --- NIVEL 2: detalle del IPC en bloque colapsable ---
-  buildIpcDetalle();
+  // --- NIVEL 2: detalles en bloques colapsables ---
+  buildDetalleColapsable_('ipc');
+  buildDetalleColapsable_('emae');
 
   // --- Selector de variable (modo nominal) ---
   sel.innerHTML = vars.map(v => `<option value="${v}">${v}</option>`).join('');
@@ -1815,18 +1864,26 @@ function buildSalarioRealCard() {
   `;
 }
 
-/** Nivel 2: las 12 divisiones del IPC como mini-tabla, ordenadas por interanual
- *  descendente (arriba lo que más subió). Mismo patrón que buildBrechaTable.
+/** ============ MOTOR GENÉRICO DE DETALLE COLAPSABLE ============
+ *  Nivel 2 de las KPI cards: una mini-tabla ordenada por interanual descendente
+ *  (arriba lo que más subió), dentro de un bloque plegable. Mismo patrón que
+ *  buildBrechaTable. Lo usan el detalle del IPC y el del EMAE — ver DETALLES.
  */
-let estIpcAbierto = false;
 
-function buildIpcDetalle() {
-  const cont  = document.getElementById('estIpcDetalle');
-  const count = document.getElementById('estIpcCount');
-  if (!cont) return;
+// Estado abierto/cerrado por bloque, indexado por la clave de DETALLES
+const detalleAbierto = {};
 
-  const divisiones = (ESTRUCTURAL ? ESTRUCTURAL.variables : [])
-    .filter(esDivisionIPC)
+function buildDetalleColapsable_(clave) {
+  const cfg = DETALLES[clave];
+  if (!cfg) return;
+
+  const cont   = document.getElementById(cfg.idBase + 'Detalle');
+  const count  = document.getElementById(cfg.idBase + 'Count');
+  const bloque = document.getElementById(cfg.idBase + 'Bloque');
+  if (!cont || !bloque) return;
+
+  const items = (ESTRUCTURAL ? ESTRUCTURAL.variables : [])
+    .filter(cfg.filtro)
     .map(name => {
       const serie = ESTRUCTURAL.porVariable[name];
       return { name, serie, ult: serie.ultimo };
@@ -1841,11 +1898,11 @@ function buildIpcDetalle() {
       return ib - ia;
     });
 
-  if (count) count.textContent = divisiones.length ? `· ${divisiones.length} divisiones` : '';
+  if (count) count.textContent = items.length ? `· ${items.length} ${cfg.plural}` : '';
 
-  if (!divisiones.length) {
+  if (!items.length) {
     cont.innerHTML = '';
-    document.getElementById('estIpcBloque').style.display = 'none';
+    bloque.style.display = 'none';
     return;
   }
 
@@ -1856,15 +1913,15 @@ function buildIpcDetalle() {
     <div style="padding:14px 16px 4px; border:1px solid var(--border); border-top:none; border-radius:0 0 4px 4px; background:var(--bg-card);">
       <table style="width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:12px;">
       <thead><tr>
-        <th style="${th} text-align:left;">RUBRO</th>
-        <th style="${th}">ÍNDICE</th>
+        <th style="${th} text-align:left;">${cfg.colRubro}</th>
+        <th style="${th}">${cfg.colValor}</th>
         <th style="${th}">VAR. I.A.</th>
       </tr></thead><tbody>
   `;
 
-  divisiones.forEach(d => {
-    // Dentro del bloque, el prefijo "IPC " es redundante
-    const rubro   = d.name.replace(/^IPC\s+/, '');
+  items.forEach(d => {
+    // Dentro del bloque, el prefijo de la familia es redundante
+    const rubro   = d.name.replace(cfg.prefijo, '');
     const ia      = d.ult.var_interanual;
     const tieneIa = ia != null;
     const color   = tieneIa ? (ia >= 0 ? 'var(--accent)' : 'var(--red)') : 'var(--text-muted)';
@@ -1876,32 +1933,36 @@ function buildIpcDetalle() {
     </tr>`;
   });
 
-  const per = divisiones[0].ult.periodo;
+  const per = items[0].ult.periodo;
   html += `</tbody></table>
       <div style="font-family:var(--font-mono); font-size:9px; color:var(--text-muted); letter-spacing:0.06em; padding:10px 0 12px;">
-        Índice dic-2016 = 100 · ${periodoCorto(per)} · variación interanual
+        ${cfg.unidad} · ${periodoCorto(per)} · variación interanual
       </div>
     </div>`;
 
   cont.innerHTML = html;
-  document.getElementById('estIpcBloque').style.display = '';
+  bloque.style.display = '';
 }
 
-function toggleIpcDetalle() {
-  const det = document.getElementById('estIpcDetalle');
-  estIpcAbierto = !estIpcAbierto;
+function toggleColapsable_(clave) {
+  const cfg = DETALLES[clave];
+  if (!cfg) return;
 
-  det.classList.toggle('abierto', estIpcAbierto);
-  document.getElementById('estIpcChevron').classList.toggle('abierto', estIpcAbierto);
-  document.getElementById('estIpcToggle').classList.toggle('active', estIpcAbierto);
+  const det = document.getElementById(cfg.idBase + 'Detalle');
+  const abierto = !detalleAbierto[clave];
+  detalleAbierto[clave] = abierto;
 
-  if (estIpcAbierto) {
+  det.classList.toggle('abierto', abierto);
+  document.getElementById(cfg.idBase + 'Chevron').classList.toggle('abierto', abierto);
+  document.getElementById(cfg.idBase + 'Toggle').classList.toggle('active', abierto);
+
+  if (abierto) {
     // Altura real, para que no se recorte si los rubros ocupan dos líneas
     det.style.maxHeight = det.scrollHeight + 'px';
     // Al terminar la animación se libera, así un resize no deja la tabla cortada
     det.addEventListener('transitionend', function liberar(e) {
       if (e.propertyName !== 'max-height') return;
-      if (estIpcAbierto) det.style.maxHeight = 'none';
+      if (detalleAbierto[clave]) det.style.maxHeight = 'none';
       det.removeEventListener('transitionend', liberar);
     });
   } else {
